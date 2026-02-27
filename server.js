@@ -22,7 +22,7 @@ async function connectToDatabase() {
 }
 connectToDatabase();
 
-// --- 🛑 FIX: Serve index.html on root route ---
+// --- FIX: Serve index.html on root route ---
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
@@ -45,17 +45,61 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// 2. Add Student Route
-app.post('/api/students', async (req, res) => {
+// --- NEW ROLE-BASED ROUTES ---
+
+// A. Add Teacher Route (Admin Only)
+app.post('/api/admin/teachers', async (req, res) => {
     try {
         const { password, ...userData } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
-        await db.collection('users').insertOne({ ...userData, password: hashedPassword });
+        await db.collection('users').insertOne({
+            ...userData,
+            role: "teacher", // --- Explicitly set role
+            password: hashedPassword
+        });
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
     }
 });
+
+// B. Delete Teacher Route (Admin Only)
+app.delete('/api/admin/teachers/:id', async (req, res) => {
+    try {
+        await db.collection('users').deleteOne({ studentId: req.params.id, role: "teacher" });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// C. Add Student Route (Teacher Only)
+app.post('/api/teacher/students', async (req, res) => {
+    try {
+        const { password, ...userData } = req.body;
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await db.collection('users').insertOne({
+            ...userData,
+            role: "student", // --- Explicitly set role
+            password: hashedPassword
+        });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// D. Delete Student Route (Teacher Only)
+app.delete('/api/teacher/students/:id', async (req, res) => {
+    try {
+        await db.collection('users').deleteOne({ studentId: req.params.id, role: "student" });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// --- EXISTING ROUTES ---
 
 // 3. Get students by class
 app.get('/api/students/class/:classId', async (req, res) => {
