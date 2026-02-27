@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
+    <style>
+        body { padding: 20px; }
+        .card { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="#" class="logo">ADIS Admin</a>
+        <button onclick="localStorage.clear(); window.location.href='index.html';">Logout</button>
+    </header>
+    <div class="container">
+        <h1>Teacher Panel</h1>
+        
+        <div class="row">
+            <div class="col-sm-12 col-md-6">
+                <div class="card">
+                    <h3>Add Student</h3>
+                    <input type="text" id="sName" placeholder="Name">
+                    <input type="text" id="sId" placeholder="ID">
+                    <select id="sClass">
+                        <option value="10A">Class 10-A</option>
+                        <option value="10B">Class 10-B</option>
+                    </select>
+                    <input type="password" id="sPass" placeholder="Password">
+                    <button onclick="addStudent()">Add Student</button>
+                </div>
+            </div>
+
+            <div class="col-sm-12 col-md-6">
+                <div class="card">
+                    <h3>Post Announcement</h3>
+                    <textarea id="annText" placeholder="Announcement..."></textarea>
+                    <button onclick="postAnnouncement()">Post</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-sm-12 col-md-6">
+                <div class="card">
+                    <h3>Add Study Material</h3>
+                    <input type="text" id="matTitle" placeholder="Title">
+                    <input type="text" id="matLink" placeholder="Link (URL)">
+                    <select id="matClass">
+                        <option value="10A">Class 10-A</option>
+                        <option value="10B">Class 10-B</option>
+                    </select>
+                    <button onclick="addMaterial()">Add Material</button>
+                </div>
+            </div>
+
+            <div class="col-sm-12 col-md-6">
+                <div class="card">
+                    <h3>Quick Actions</h3>
+                    <a href="fees.html" class="button">Manage Fees</a>
+                    <a href="attendance.html" class="button">Mark Attendance</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function addStudent() {
+            const data = { 
+                name: document.getElementById('sName').value,
+                studentId: document.getElementById('sId').value,
+                classId: document.getElementById('sClass').value,
+                password: document.getElementById('sPass').value,
+                role: 'student',
+                feesPaid: 0,
+                totalFees: 5000
+            };
+            const res = await fetch('/api/students', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            if ((await res.json()).success) alert("Student Added!");
+        }
+
+        async function postAnnouncement() {
+            const res = await fetch('/api/announcements', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text: document.getElementById('annText').value, postedBy: "Admin" }) });
+            if ((await res.json()).success) alert("Posted!");
+        }
+
+        async function addMaterial() {
+            const data = {
+                title: document.getElementById('matTitle').value,
+                link: document.getElementById('matLink').value,
+                classId: document.getElementById('matClass').value
+            };
+            const res = await fetch('/api/materials', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            if ((await res.json()).success) alert("Material Added!");
+        }
+    </script>
+</body>
+</html>

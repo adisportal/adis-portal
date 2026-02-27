@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADIS | Secure Portal</title>
+    <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --primary-blue: #0061f2; --dark-blue: #0e1c36; --light-bg: #f8f9fc; }
+        body { background-color: var(--light-bg); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
+        
+        /* Login Page Styling */
+        #login-page { height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at top right, #1a2a3a, #0e1c36); padding: 20px; }
+        .login-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); width: 100%; max-width: 450px; }
+        .school-title { font-size: 1.1rem; font-weight: 800; color: var(--dark-blue); margin: 15px 0; line-height: 1.4; text-transform: uppercase; }
+        
+        /* App Layout */
+        #main-app { display: none; }
+        .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
+        
+        /* Sidebar Styling */
+        .sidebar { position: fixed; left: -280px; top: 0; height: 100%; width: 280px; background: var(--dark-blue); color: white; transition: 0.3s ease; z-index: 1001; padding: 30px 20px; }
+        .sidebar.active { left: 0; }
+        .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .sidebar-overlay.active { display: block; }
+        
+        /* Navigation Links */
+        .nav-link { color: #cbd5e0; cursor: pointer; margin-bottom: 10px; padding: 12px 15px; border-radius: 12px; text-decoration: none; display: flex; align-items: center; transition: 0.2s; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
+        .active-link { background: var(--primary-blue) !important; color: white !important; }
+        
+        .content-area { max-width: 800px; margin: 20px auto; padding: 0 15px; padding-bottom: 80px; }
+        .section-panel { display: none; animation: slideUp 0.4s ease-out; }
+        .active-panel { display: block; }
+        .card { border: none; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 15px; background: white; padding: 20px; }
+        
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div id="login-page">
+    <div class="login-card text-center">
+        <img src="https://img.icons8.com/fluency/96/graduation-cap.png" width="70">
+        <div class="school-title">ASHWAMEDH DREAM INTERNATIONAL SCHOOL</div>
+        <input type="text" id="username" class="form-control mb-3" placeholder="Registration ID">
+        <input type="password" id="password" class="form-control mb-4" placeholder="Password">
+        <button class="btn btn-primary w-100 py-3 fw-bold" id="loginBtn" onclick="handleLogin()">LOGIN</button>
+        <p id="login-error" class="text-danger mt-3 small"></p>
+    </div>
+</div>
+
+<div id="main-app">
+    <div class="top-bar shadow-sm">
+        <i class="fas fa-bars fs-4" style="cursor:pointer" onclick="toggleSidebar()"></i>
+        <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
+        <div></div>
+    </div>
+
+    <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+    <div class="sidebar" id="sidebar">
+        <div class="text-center mb-4">
+            <h5 class="fw-bold">ADIS MIS</h5>
+            <small class="text-white-50" id="user-display-name"></small>
+        </div>
+        <div id="nav-menu">
+            <div class="nav-link active-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>
+            <div class="nav-link" onclick="showSection('attendance', 'Attendance')"><i class="fas fa-user-check me-3"></i> Attendance</div>
+            <div class="nav-link" onclick="showSection('fees', 'Fees')"><i class="fas fa-credit-card me-3"></i> Fees</div>
+            <div class="nav-link" onclick="showSection('study-material', 'Materials')"><i class="fas fa-book me-3"></i> Materials</div>
+        </div>
+        <button class="btn btn-link text-white-50 w-100 mt-5" onclick="location.reload()">Logout</button>
+    </div>
+
+    <div class="content-area">
+        <div id="announcements" class="section-panel active-panel text-center">
+            <div class="card p-5">
+                <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
+                <h5>Welcome to the Portal</h5>
+                <p class="text-muted small">Access your class materials and fee records securely.</p>
+            </div>
+        </div>
+
+        <div id="attendance" class="section-panel">
+            <h3 class="fw-bold mb-4">📊 Attendance</h3>
+            
+            <div id="teacher-attendance-controls" class="card p-3 mb-4" style="display:none;">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <select id="att-class-select" class="form-select" onchange="loadClassAttendance()">
+                            <option value="">Select Class</option>
+                            <option value="10A">Class 10-A</option>
+                            <option value="10B">Class 10-B</option>
+                        </select>
+                    </div>
+                    <div class="col-6"><input type="date" id="att-date-select" class="form-control" onchange="loadClassAttendance()"></div>
+                </div>
+                <div id="class-student-list" class="mt-3"></div>
+            </div>
+
+            <div id="student-attendance-view" style="display:none;">
+                <div class="card p-3 text-center">
+                    <h5>Overall Attendance</h5>
+                    <div class="progress" style="height: 25px;">
+                        <div id="att-progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" >0%</div>
+                    </div>
+                    <small id="att-stats" class="text-muted"></small>
+                </div>
+                <div id="student-attendance-list"></div>
+            </div>
+        </div>
+
+        <div id="fees" class="section-panel">
+            <h3 class="fw-bold mb-4">💳 Fees</h3>
+            <div id="fee-admin-controls" class="card p-3 mb-4" style="display:none;">
+                <h6>Update Student Fees</h6>
+                <div class="row g-2">
+                    <div class="col-6"><input type="text" id="fee-sid" class="form-control" placeholder="Student ID"></div>
+                    <div class="col-6"><input type="number" id="fee-paid" class="form-control" placeholder="Amount Paid"></div>
+                </div>
+                <button class="btn btn-primary mt-2" onclick="submitFeeUpdate(this)">Update Fee Record</button>
+            </div>
+            <div id="fee-content">Loading fee details...</div>
+        </div>
+
+        <div id="study-material" class="section-panel">
+            <h3 class="fw-bold mb-4">📚 Materials</h3>
+            <div id="material-upload-form" class="card p-3 mb-4" style="display:none;">
+                <h6>Post New Material</h6>
+                <div class="row g-2">
+                    <div class="col-6"><input type="text" id="mat-title" class="form-control" placeholder="Title"></div>
+                    <div class="col-6"><input type="text" id="mat-class" class="form-control" placeholder="Class (e.g. 10A)"></div>
+                    <div class="col-12"><input type="url" id="mat-link" class="form-control" placeholder="URL Link"></div>
+                </div>
+                <button class="btn btn-success mt-2 w-100" onclick="uploadMaterial(this)">Upload Material</button>
+            </div>
+            <div id="material-list">Loading materials...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- MongoDB Backend Integration ---
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('active');
+        document.getElementById('overlay').classList.toggle('active');
+    }
+
+    // Consolidated handleLogin with debug alerts
+    async function handleLogin() {
+        const id = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value.trim();
+        const btn = document.getElementById('loginBtn');
+        btn.innerText = "Authenticating..."; btn.disabled = true;
+
+        try {
+            // Call Node.js Server
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, password })
+            });
+
+            // DEBUG ALERTS
+            alert("Response Status: " + res.status); 
+            const result = await res.json();
+            alert("Result: " + JSON.stringify(result));
+            
+            if (result.success) {
+                // Store user info
+                sessionStorage.setItem('currentUser', JSON.stringify(result.user));
+                
+                document.getElementById('login-page').style.display = 'none';
+                document.getElementById('main-app').style.display = 'block';
+                document.getElementById('user-display-name').innerText = result.user.name;
+                
+                setupNav(result.user.role);
+                loadAttendanceSection(); // Load attendance on login
+            } else {
+                alert("Invalid Credentials: " + result.message);
+                btn.innerText = "LOGIN"; btn.disabled = false;
+            }
+        } catch (e) { 
+            alert("Server Error: " + e.message); 
+            btn.innerText = "LOGIN"; btn.disabled = false; 
+        }
+    }
+
+    function setupNav(role) {
+        const isStaff = (role === 'admin'); // or 'teacher'
+        if (isStaff) {
+            document.getElementById('material-upload-form').style.display = 'block';
+            document.getElementById('fee-admin-controls').style.display = 'block';
+        }
+    }
+
+    function showSection(id, title) {
+        document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
+        document.getElementById(id).classList.add('active-panel');
+        document.getElementById('header-title').innerText = title;
+        
+        if (id === 'fees') loadFees();
+        if (id === 'study-material') loadMaterials();
+        if (id === 'attendance') loadAttendanceSection();
+        
+        toggleSidebar();
+    }
+
+    // --- Data Loading Functions ---
+
+    async function loadMaterials() {
+        const user = JSON.parse(sessionStorage.getItem('currentUser'));
+        const list = document.getElementById('material-list');
+        list.innerHTML = "Fetching materials...";
+        
+        try {
+            const res = await fetch(`/api/materials/${user.classId}`);
+            const data = await res.json();
+            
+            list.innerHTML = data.map(m => `
+                <div class="card p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0 fw-bold">${m.title}</h6>
+                            <small class="text-muted">${new Date(m.date).toLocaleDateString()}</small>
+                        </div>
+                        <a href="${m.link}" target="_blank" class="button small">Open</a>
+                    </div>
+                </div>`).join('') || "No materials found.";
+        } catch (e) { list.innerHTML = "Error loading materials."; }
+    }
+
+    async function uploadMaterial(btn) {
+        const data = {
+            title: document.getElementById('mat-title').value,
+            link: document.getElementById('mat-link').value,
+            classId: document.getElementById('mat-class').value
+        };
+        btn.disabled = true;
+        
+        const res = await fetch('/api/materials', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data) 
+        });
+        
+        if ((await res.json()).success) {
+            alert("Material Added!");
+            btn.disabled = false;
+            loadMaterials();
+        }
+    }
+
+    async function submitFeeUpdate(btn) {
+        const data = {
+            studentId: document.getElementById('fee-sid').value,
+            amountPaid: parseFloat(document.getElementById('fee-paid').value)
+        };
+        btn.disabled = true;
+        
+        const res = await fetch('/api/fees/update', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data) 
+        });
+        
+        if ((await res.json()).success) {
+            alert("Fee Updated!");
+            btn.disabled = false;
+        }
+    }
+
+    async function loadFees() {
+        const user = JSON.parse(sessionStorage.getItem('currentUser'));
+        const content = document.getElementById('fee-content');
+        
+        try {
+            const res = await fetch(`/api/student/profile/${user.id}`);
+            const data = await res.json();
+            
+            if (data) {
+                const remaining = data.totalFees - data.feesPaid;
+                content.innerHTML = `
+                    <div class="card bg-primary text-white p-4 text-center mb-3">
+                        <small>REMAINING BALANCE</small>
+                        <h1 class="fw-bold">₹${remaining}</h1>
+                        <span class="badge bg-white text-primary">Status: ${remaining > 0 ? 'Pending' : 'Paid'}</span>
+                    </div>
+                    <div class="card p-3">
+                        <div class="d-flex justify-content-between"><span>Total:</span><strong>₹${data.totalFees}</strong></div>
+                        <div class="d-flex justify-content-between"><span>Paid:</span><strong class="text-success">₹${data.feesPaid}</strong></div>
+                    </div>`;
+            }
+        } catch (e) { content.innerHTML = "Error loading fees."; }
+    }
+
+    // --- Attendance Logic ---
+    
+    // Set date input to today by default
+    document.getElementById('att-date-select').valueAsDate = new Date();
+
+    async function loadAttendanceSection() {
+        const user = JSON.parse(sessionStorage.getItem('currentUser'));
+        if (user.role === 'admin') {
+            document.getElementById('teacher-attendance-controls').style.display = 'block';
+            document.getElementById('student-attendance-view').style.display = 'none';
+        } else {
+            document.getElementById('teacher-attendance-controls').style.display = 'none';
+            document.getElementById('student-attendance-view').style.display = 'block';
+            loadStudentAttendanceView(user.id);
+        }
+    }
+
+    // Teacher: Load students to mark attendance
+    async function loadClassAttendance() {
+        const classId = document.getElementById('att-class-select').value;
+        const date = document.getElementById('att-date-select').value;
+        if (!classId || !date) return;
+
+        const listContainer = document.getElementById('class-student-list');
+        listContainer.innerHTML = "Loading students...";
+
+        // 1. Get all students in class
+        const studentsRes = await fetch(`/api/students/class/${classId}`);
+        const students = await studentsRes.json();
+        
+        // 2. Get existing attendance for this date
+        const attRes = await fetch(`/api/attendance/${classId}/${date}`);
+        const existingAtt = await attRes.json();
+
+        // Create a map for quick lookup
+        const attMap = {};
+        existingAtt.forEach(a => attMap[a.studentId] = a.status);
+
+        listContainer.innerHTML = students.map(s => `
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                <span>${s.name}</span>
+                <div>
+                    <button class="btn btn-sm ${attMap[s.studentId] === 'Present' ? 'btn-success' : 'btn-outline-success'}" 
+                        onclick="markAttendance('${s.studentId}', 'Present')">P</button>
+                    <button class="btn btn-sm ${attMap[s.studentId] === 'Absent' ? 'btn-danger' : 'btn-outline-danger'}" 
+                        onclick="markAttendance('${s.studentId}', 'Absent')">A</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Teacher: Mark single student
+    async function markAttendance(studentId, status) {
+        const date = document.getElementById('att-date-select').value;
+        const classId = document.getElementById('att-class-select').value;
+        
+        await fetch('/api/attendance/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ studentId, date, status, classId })
+        });
+        loadClassAttendance(); // Refresh list
+    }
+
+    // Student: View records
+    async function loadStudentAttendanceView(studentId) {
+        const res = await fetch(`/api/student/attendance/${studentId}`);
+        const records = await res.json();
+        
+        const listContainer = document.getElementById('student-attendance-list');
+        const progressBar = document.getElementById('att-progress-bar');
+        
+        let presentDays = records.filter(r => r.status === 'Present').length;
+        let totalDays = records.length;
+        let percentage = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : 0;
+
+        // Update Progress Bar
+        progressBar.style.width = percentage + "%";
+        progressBar.innerText = percentage + "%";
+        progressBar.className = percentage >= 75 ? "progress-bar bg-success" : "progress-bar bg-danger";
+        document.getElementById('att-stats').innerText = `${presentDays} Present / ${totalDays} Total Days`;
+
+        // Update List
+        listContainer.innerHTML = records.map(r => `
+            <div class="card p-2 mb-1 d-flex justify-content-between">
+                <span>${r.date}</span>
+                <span class="badge ${r.status === 'Present' ? 'bg-success' : 'bg-danger'}">${r.status}</span>
+            </div>
+        `).join('') || "No records.";
+    }
+
+</script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mark Attendance</title>
+    <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
+    <style>
+        body { padding: 20px; }
+        .card { margin-bottom: 20px; }
+        .row-center { justify-content: center; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="dashboard.html" class="logo">ADIS Admin</a>
+        <a href="dashboard.html">Back to Dashboard</a>
+    </header>
+    
+    <div class="container">
+        <h1>Mark Attendance</h1>
+        
+        <div class="card">
+            <div class="row">
+                <div class="col-sm-6">
+                    <label>Class:</label>
+                    <select id="classSelect" onchange="loadStudents()">
+                        <option value="">--Select--</option>
+                        <option value="10A">Class 10-A</option>
+                        <option value="10B">Class 10-B</option>
+                    </select>
+                </div>
+                <div class="col-sm-6">
+                    <label>Date:</label>
+                    <input type="date" id="attendanceDate">
+                </div>
+            </div>
+        </div>
+
+        <table id="studentTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Student Name</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="studentBody"></tbody>
+        </table>
+        
+        <button class="fluid" onclick="saveAttendance()">Save Attendance</button>
+    </div>
+
+    <script>
+        document.getElementById('attendanceDate').valueAsDate = new Date();
+
+        async function loadStudents() {
+            const classId = document.getElementById('classSelect').value;
+            if (!classId) return;
+
+            const response = await fetch(`/api/students/class/${classId}`);
+            const students = await response.json();
+            
+            const table = document.getElementById('studentTable');
+            const body = document.getElementById('studentBody');
+            body.innerHTML = '';
+            table.style.display = 'table';
+
+            students.forEach(student => {
+                const row = `<tr>
+                    <td>${student.name}</td>
+                    <td>
+                        <input type="radio" id="p-${student.studentId}" name="status-${student.studentId}" value="Present" checked>
+                        <label for="p-${student.studentId}" class="button small">Present</label>
+                        <input type="radio" id="a-${student.studentId}" name="status-${student.studentId}" value="Absent">
+                        <label for="a-${student.studentId}" class="button small secondary">Absent</label>
+                    </td>
+                </tr>`;
+                body.innerHTML += row;
+            });
+        }
+
+        async function saveAttendance() {
+            const classId = document.getElementById('classSelect').value;
+            const date = document.getElementById('attendanceDate').value;
+            const rows = document.querySelectorAll('#studentBody tr');
+            const attendanceData = [];
+
+            rows.forEach(row => {
+                const radioContainer = row.cells[1];
+                const studentId = radioContainer.querySelector('input[type="radio"]').name.split('-')[1];
+                const status = radioContainer.querySelector(`input[name="status-${studentId}"]:checked`).value;
+                
+                attendanceData.push({ studentId, status, date, classId });
+            });
+
+            const response = await fetch('/api/attendance/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(attendanceData)
+            });
+
+            if ((await response.json()).success) {
+                alert("Attendance Saved!");
+            }
+        }
+    </script>
+</body>
+</html>

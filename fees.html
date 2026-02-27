@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Fees</title>
+    <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
+    <style>
+        body { padding: 20px; }
+        .card { margin-bottom: 20px; }
+        input[type="number"] { width: 100px; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="dashboard.html" class="logo">ADIS Admin</a>
+        <a href="dashboard.html">Back to Dashboard</a>
+    </header>
+    
+    <div class="container">
+        <h1>Update Student Fees</h1>
+        
+        <div class="card">
+            <label>Select Class:</label>
+            <select id="classSelect" onchange="loadStudents()">
+                <option value="">--Select Class--</option>
+                <option value="10A">Class 10-A</option>
+                <option value="10B">Class 10-B</option>
+            </select>
+        </div>
+
+        <table id="studentTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Total</th>
+                    <th>Paid</th>
+                    <th>Amount to Pay</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="studentBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        async function loadStudents() {
+            const classId = document.getElementById('classSelect').value;
+            if (!classId) return;
+
+            const response = await fetch(`/api/students/class/${classId}`);
+            const students = await response.json();
+            
+            const table = document.getElementById('studentTable');
+            const body = document.getElementById('studentBody');
+            body.innerHTML = '';
+            table.style.display = 'table';
+
+            students.forEach(student => {
+                const row = `<tr>
+                    <td>${student.name}</td>
+                    <td>${student.totalFees || 0}</td>
+                    <td>${student.feesPaid || 0}</td>
+                    <td><input type="number" id="pay-${student.studentId}" placeholder="0"></td>
+                    <td><button class="small" onclick="updateFees('${student.studentId}')">Update</button></td>
+                </tr>`;
+                body.innerHTML += row;
+            });
+        }
+
+        async function updateFees(studentId) {
+            const amountInput = document.getElementById(`pay-${studentId}`).value;
+            const amount = parseFloat(amountInput);
+
+            if (isNaN(amount) || amount <= 0) {
+                alert("Please enter a valid amount");
+                return;
+            }
+
+            const response = await fetch('/api/fees/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentId, amountPaid: amount })
+            });
+
+            if ((await response.json()).success) {
+                alert("Fees updated!");
+                loadStudents();
+            }
+        }
+    </script>
+</body>
+</html>
