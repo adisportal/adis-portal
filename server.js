@@ -21,6 +21,17 @@ async function connectToDatabase() {
     }
 }
 connectToDatabase();
+// --- TEMPORARY FIX: Hash a password for you ---
+async function debugHash() {
+    const plainPassword = "admin123"; // The password you want to use
+    const hash = await bcrypt.hash(plainPassword, 10);
+    console.log("-----------------------------------------");
+    console.log("YOUR HASHED PASSWORD IS:", hash);
+    console.log("-----------------------------------------");
+}
+debugHash();
+// ----------------------------------------------
+
 
 // --- FIX: Serve index.html on root route ---
 app.get('/', (req, res) => {
