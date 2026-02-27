@@ -1,6 +1,6 @@
 const express = require('express');
 const { MongoClient } = require('mongodb');
-const bcrypt = require('bcryptjs'); // --- Added security dependency
+const bcrypt = require('bcryptjs');
 const app = express();
 
 app.use(express.json());
@@ -22,15 +22,19 @@ async function connectToDatabase() {
 }
 connectToDatabase();
 
+// --- 🛑 FIX: Serve index.html on root route ---
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/public/index.html');
+});
+// ----------------------------------------------
+
 // --- API ROUTES ---
 
-// 1. Login Route (Updated to use bcrypt comparison)
+// 1. Login Route
 app.post('/api/login', async (req, res) => {
     const { id, password } = req.body;
     try {
         const user = await db.collection('users').findOne({ studentId: id });
-        
-        // --- SECURE PASSWORD COMPARISON ---
         if (user && await bcrypt.compare(password, user.password)) {
             res.json({ success: true, user: { name: user.name, role: user.role, id: user.studentId, classId: user.classId } });
         } else {
@@ -41,17 +45,12 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// 2. Add Student Route (Updated to hash password)
+// 2. Add Student Route
 app.post('/api/students', async (req, res) => {
     try {
         const { password, ...userData } = req.body;
-        // --- HASH THE PASSWORD BEFORE SAVING ---
         const hashedPassword = await bcrypt.hash(password, 10);
-        
-        await db.collection('users').insertOne({
-            ...userData,
-            password: hashedPassword
-        });
+        await db.collection('users').insertOne({ ...userData, password: hashedPassword });
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
@@ -82,8 +81,6 @@ app.post('/api/fees/update', async (req, res) => {
     }
 });
 
-// --- UPDATED ATTENDANCE ROUTES ---
-
 // 5. Get attendance for a specific class and date (Teacher View)
 app.get('/api/attendance/:classId/:date', async (req, res) => {
     try {
@@ -101,7 +98,6 @@ app.get('/api/attendance/:classId/:date', async (req, res) => {
 app.post('/api/attendance/update', async (req, res) => {
     try {
         const { studentId, date, status, classId } = req.body;
-        // upsert: true means update if exists, insert if not
         await db.collection('attendance').updateOne(
             { studentId: studentId, date: date },
             { $set: { status: status, classId: classId } },
@@ -177,7 +173,6 @@ app.get('/api/materials/:classId', async (req, res) => {
     }
 });
 
-// --- UPDATED PORT FOR DEPLOYMENT ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
