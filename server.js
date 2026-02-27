@@ -21,17 +21,6 @@ async function connectToDatabase() {
     }
 }
 connectToDatabase();
-// --- TEMPORARY FIX: Hash a password for you ---
-async function debugHash() {
-    const plainPassword = "admin123"; // The password you want to use
-    const hash = await bcrypt.hash(plainPassword, 10);
-    console.log("-----------------------------------------");
-    console.log("YOUR HASHED PASSWORD IS:", hash);
-    console.log("-----------------------------------------");
-}
-debugHash();
-// ----------------------------------------------
-
 
 // --- FIX: Serve index.html on root route ---
 app.get('/', (req, res) => {
@@ -46,7 +35,7 @@ app.post('/api/login', async (req, res) => {
     const { id, password } = req.body;
     try {
         const user = await db.collection('users').findOne({ studentId: id });
-        if (user && password === user.password) { // 🛑 TEMPORARY BYPASS
+        if (user && await bcrypt.compare(password, user.password)) {
             res.json({ success: true, user: { name: user.name, role: user.role, id: user.studentId, classId: user.classId } });
         } else {
             res.status(401).json({ success: false, message: "Invalid Credentials" });
