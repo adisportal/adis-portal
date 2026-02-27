@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
-<link rel="manifest" href="/manifest.json">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ADIS | Secure Portal</title>
+    <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -83,7 +83,7 @@
             <div class="nav-link role-student" style="display:none;" onclick="showSection('fees', 'My Fees')"><i class="fas fa-credit-card me-3"></i> Fees</div>
             <div class="nav-link role-student" style="display:none;" onclick="showSection('study-material', 'Study Materials')"><i class="fas fa-book me-3"></i> Materials</div>
         </div>
-        <button class="btn btn-link text-white-50 w-100 mt-5" onclick="location.reload()">Logout</button>
+        <button class="btn btn-link text-white-50 w-100 mt-5" onclick="logout()">Logout</button>
     </div>
 
     <div class="content-area">
@@ -190,6 +190,15 @@
 <script>
     // --- App Logic ---
 
+    // AUTO-LOGIN FUNCTIONALITY
+    window.onload = function() {
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+            const user = JSON.parse(savedUser);
+            activateApp(user);
+        }
+    };
+
     function toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('active');
         document.getElementById('overlay').classList.toggle('active');
@@ -211,14 +220,9 @@
             const result = await res.json();
             
             if (result.success) {
-                sessionStorage.setItem('currentUser', JSON.stringify(result.user));
-                document.getElementById('login-page').style.display = 'none';
-                document.getElementById('main-app').style.display = 'block';
-                document.getElementById('user-display-name').innerText = result.user.name;
-                document.getElementById('user-display-role').innerText = result.user.role.toUpperCase();
-                
-                setupNav(result.user.role);
-                loadDashboardBasedOnRole(result.user.role);
+                // PERSISTENT LOGIN
+                localStorage.setItem('currentUser', JSON.stringify(result.user));
+                activateApp(result.user);
             } else {
                 alert("Login Failed: " + result.message);
                 btn.innerText = "LOGIN"; btn.disabled = false;
@@ -227,6 +231,22 @@
             alert("Server Error: " + e.message); 
             btn.innerText = "LOGIN"; btn.disabled = false; 
         }
+    }
+
+    // Helper to activate app UI
+    function activateApp(user) {
+        document.getElementById('login-page').style.display = 'none';
+        document.getElementById('main-app').style.display = 'block';
+        document.getElementById('user-display-name').innerText = user.name;
+        document.getElementById('user-display-role').innerText = user.role.toUpperCase();
+        
+        setupNav(user.role);
+        loadDashboardBasedOnRole(user.role);
+    }
+
+    function logout() {
+        localStorage.removeItem('currentUser');
+        location.reload();
     }
 
     function setupNav(role) {
@@ -326,7 +346,8 @@
 
     // --- Existing Features ---
     async function loadMaterials() {
-        const user = JSON.parse(sessionStorage.getItem('currentUser'));
+        // Updated to use localStorage
+        const user = JSON.parse(localStorage.getItem('currentUser'));
         const list = document.getElementById('material-list');
         list.innerHTML = "Fetching...";
         
@@ -365,7 +386,8 @@
     }
 
     async function loadFees() {
-        const user = JSON.parse(sessionStorage.getItem('currentUser'));
+        // Updated to use localStorage
+        const user = JSON.parse(localStorage.getItem('currentUser'));
         const content = document.getElementById('fee-content');
         
         if (user.role === 'admin' || user.role === 'teacher') {
@@ -394,7 +416,8 @@
     document.getElementById('att-date-select').valueAsDate = new Date();
 
     async function loadAttendanceSection() {
-        const user = JSON.parse(sessionStorage.getItem('currentUser'));
+        // Updated to use localStorage
+        const user = JSON.parse(localStorage.getItem('currentUser'));
         if (user.role === 'admin' || user.role === 'teacher') {
             document.getElementById('teacher-attendance-controls').style.display = 'block';
             document.getElementById('student-attendance-view').style.display = 'none';
