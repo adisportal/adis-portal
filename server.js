@@ -35,7 +35,7 @@ app.post('/api/login', async (req, res) => {
     const { id, password } = req.body;
     try {
         const user = await db.collection('users').findOne({ studentId: id });
-        if (user && await bcrypt.compare(password, user.password)) {
+        if (user && password === user.password) { // 🛑 TEMPORARY BYPASS
             res.json({ success: true, user: { name: user.name, role: user.role, id: user.studentId, classId: user.classId } });
         } else {
             res.status(401).json({ success: false, message: "Invalid Credentials" });
