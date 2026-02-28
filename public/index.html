@@ -27,11 +27,11 @@
         #main-app { display: none; }
         .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
-        /* Sidebar Styling */
+        /* Sidebar Styling - FIXED */
         .sidebar { position: fixed; left: -280px; top: 0; height: 100vh; width: 280px; background: white; color: var(--dark-blue); transition: left 0.3s ease-in-out; z-index: 1002; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
         .sidebar.active { left: 0; }
         
-        /* Overlay */
+        /* Overlay - FIXED */
         .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1001; }
         .sidebar-overlay.active { display: block; }
         
@@ -59,8 +59,8 @@
         .nav-item.active { color: var(--primary-blue); font-weight: 600; }
         .nav-item i { font-size: 1.3rem; margin-bottom: 4px; display: block; }
         
-        /* Icon Animation */
-        .menu-icon { transition: transform 0.3s ease; }
+        /* Icon Animation - FIXED */
+        .menu-icon { transition: transform 0.3s ease; display: inline-block; }
         .menu-icon.active { transform: rotate(90deg); }
         
         /* Utility */
@@ -106,9 +106,7 @@
             <div class="nav-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>
             <div class="nav-link role-admin" style="display:none;" onclick="showSection('admin-teachers', 'Manage Teachers')"><i class="fas fa-chalkboard-teacher me-3"></i> Manage Teachers</div>
             <div class="nav-link role-staff" style="display:none;" onclick="showSection('staff-students', 'Manage Students')"><i class="fas fa-user-graduate me-3"></i> Manage Students</div>
-            
             <div class="nav-link" onclick="showSection('settings', 'Settings')"><i class="fas fa-cog me-3"></i> Settings</div>
-            
             <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>
         </div>
     </div>
@@ -277,7 +275,7 @@
     }
     // ---------------------------------
 
-    // Updated toggleSidebar with icon animation
+    // Updated toggleSidebar with icon animation - FIXED
     function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('overlay');
@@ -288,7 +286,7 @@
         menuIcon.classList.toggle('active');
         
         // Switch between bars and times (X) icon
-        if (menuIcon.classList.contains('active')) {
+        if (sidebar.classList.contains('active')) {
             menuIcon.classList.remove('fa-bars');
             menuIcon.classList.add('fa-times');
         } else {
@@ -590,7 +588,7 @@
         loadClassStudents();
     }
 
-    // --- NEW SETTINGS LOGIC ---
+    // --- SETTINGS LOGIC ---
     function clearAppData() {
         if (confirm("Are you sure? This will clear local cached data.")) {
             // Simulated cache clearing
