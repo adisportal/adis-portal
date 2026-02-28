@@ -25,13 +25,18 @@
         
         /* App Layout */
         #main-app { display: none; }
-        .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; }
+        .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
         /* Sidebar Styling */
-        .sidebar { position: fixed; left: -280px; top: 0; height: 100%; width: 280px; background: white; color: var(--dark-blue); transition: 0.3s ease; z-index: 1001; padding: 30px 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+        .sidebar { position: fixed; left: -280px; top: 0; height: 100%; width: 280px; background: white; color: var(--dark-blue); transition: 0.3s ease; z-index: 1001; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
         .sidebar.active { left: 0; }
         .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
         .sidebar-overlay.active { display: block; }
+        
+        /* Profile Section in Sidebar */
+        .profile-section { background: var(--light-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px; cursor: pointer; text-align: center; }
+        .profile-details { display: none; margin-top: 15px; border-top: 1px solid #e3e6f0; padding-top: 15px; text-align: left; }
+        .profile-section.active .profile-details { display: block; }
         
         /* Navigation Links (Sidebar) */
         .nav-link { color: #555; cursor: pointer; margin-bottom: 5px; padding: 12px 15px; border-radius: 12px; text-decoration: none; display: flex; align-items: center; transition: 0.2s; font-weight: 500;}
@@ -70,21 +75,30 @@
 
 <div id="main-app">
     <div class="top-bar shadow-sm">
-        <i class="fas fa-bars fs-4" style="cursor:pointer; color: var(--dark-blue); margin-right: 15px;" onclick="toggleSidebar()"></i>
+        <i class="fas fa-bars fs-4" style="cursor:pointer; color: var(--dark-blue);" onclick="toggleSidebar()"></i>
         <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
+        <i class="fas fa-search fs-5 text-muted" style="cursor:pointer;"></i>
     </div>
 
     <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
     <div class="sidebar" id="sidebar">
-        <div class="text-center mb-4 border-bottom pb-3">
+        <div class="profile-section" id="profileToggle" onclick="toggleProfile()">
             <div style="width:60px; height:60px; background:var(--light-bg); border-radius:50%; margin: 0 auto 10px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:var(--primary-blue)">
                 <i class="fas fa-user"></i>
             </div>
             <h5 class="fw-bold mb-1" id="user-display-name"></h5>
             <span class="role-badge" id="user-display-role"></span>
+            
+            <div class="profile-details" id="profileDetails">
+                <p class="small mb-1"><strong>Class:</strong> <span id="user-display-class">N/A</span></p>
+                <p class="small mb-1"><strong>ID:</strong> <span id="user-display-id">N/A</span></p>
+            </div>
         </div>
+
         <div id="nav-menu">
             <div class="nav-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>
+            <div class="nav-link role-admin" style="display:none;" onclick="showSection('admin-teachers', 'Manage Teachers')"><i class="fas fa-chalkboard-teacher me-3"></i> Manage Teachers</div>
+            <div class="nav-link role-staff" style="display:none;" onclick="showSection('staff-students', 'Manage Students')"><i class="fas fa-user-graduate me-3"></i> Manage Students</div>
             <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>
         </div>
     </div>
@@ -223,6 +237,11 @@
         document.getElementById('overlay').classList.toggle('active');
     }
 
+    // Toggle Profile Details
+    function toggleProfile() {
+        document.getElementById('profileToggle').classList.toggle('active');
+    }
+
     // Hide sidebar when clicking center
     function hideSidebarOnCenterClick() {
         const sidebar = document.getElementById('sidebar');
@@ -262,8 +281,12 @@
     function activateApp(user) {
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('main-app').style.display = 'block';
+        
+        // Set Profile Data
         document.getElementById('user-display-name').innerText = user.name;
         document.getElementById('user-display-role').innerText = user.role.toUpperCase();
+        document.getElementById('user-display-class').innerText = user.classId || 'N/A';
+        document.getElementById('user-display-id').innerText = user.id;
         
         setupNav(user.role);
         loadDashboardBasedOnRole(user.role);
