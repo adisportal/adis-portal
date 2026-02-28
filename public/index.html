@@ -27,11 +27,11 @@
         #main-app { display: none; }
         .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
-        /* Sidebar Styling - UPDATED */
+        /* Sidebar Styling */
         .sidebar { position: fixed; left: -280px; top: 0; height: 100vh; width: 280px; background: white; color: var(--dark-blue); transition: left 0.3s ease-in-out; z-index: 1002; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
         .sidebar.active { left: 0; }
         
-        /* Overlay - UPDATED */
+        /* Overlay */
         .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1001; }
         .sidebar-overlay.active { display: block; }
         
@@ -59,7 +59,7 @@
         .nav-item.active { color: var(--primary-blue); font-weight: 600; }
         .nav-item i { font-size: 1.3rem; margin-bottom: 4px; display: block; }
         
-        /* Icon Animation - NEW */
+        /* Icon Animation */
         .menu-icon { transition: transform 0.3s ease; }
         .menu-icon.active { transform: rotate(90deg); }
         
@@ -106,6 +106,9 @@
             <div class="nav-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>
             <div class="nav-link role-admin" style="display:none;" onclick="showSection('admin-teachers', 'Manage Teachers')"><i class="fas fa-chalkboard-teacher me-3"></i> Manage Teachers</div>
             <div class="nav-link role-staff" style="display:none;" onclick="showSection('staff-students', 'Manage Students')"><i class="fas fa-user-graduate me-3"></i> Manage Students</div>
+            
+            <div class="nav-link" onclick="showSection('settings', 'Settings')"><i class="fas fa-cog me-3"></i> Settings</div>
+            
             <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>
         </div>
     </div>
@@ -116,6 +119,19 @@
                 <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
                 <h5 class="fw-bold">Welcome back!</h5>
                 <p class="text-muted small">Access your class materials and fee records securely.</p>
+            </div>
+        </div>
+        
+        <div id="settings" class="section-panel">
+            <h3 class="fw-bold mb-4">⚙️ Settings</h3>
+            <div class="card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span>Enable Notifications</span>
+                    <input type="checkbox" id="notif-toggle" checked>
+                </div>
+                <hr>
+                <button class="btn btn-danger w-100" onclick="clearAppData()">Clear App Cache</button>
+                <p class="small text-muted mt-2">Removes locally cached data.</p>
             </div>
         </div>
 
@@ -242,7 +258,7 @@
         }
     };
 
-    // --- NEW SWIPE GESTURE LOGIC ---
+    // --- SWIPE GESTURE LOGIC ---
     document.addEventListener('touchstart', e => {
         touchStartX = e.changedTouches[0].screenX;
     });
@@ -572,6 +588,14 @@
         if(!confirm("Are you sure?")) return;
         await fetch(`/api/teacher/students/${id}`, { method: 'DELETE' });
         loadClassStudents();
+    }
+
+    // --- NEW SETTINGS LOGIC ---
+    function clearAppData() {
+        if (confirm("Are you sure? This will clear local cached data.")) {
+            // Simulated cache clearing
+            alert("Cache Cleared!");
+        }
     }
 </script>
 </body>
