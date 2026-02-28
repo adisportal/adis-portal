@@ -27,11 +27,24 @@
         #main-app { display: none; }
         .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
-        /* Sidebar Styling - FIXED */
-        .sidebar { position: fixed; left: -280px; top: 0; height: 100vh; width: 280px; background: white; color: var(--dark-blue); transition: left 0.3s ease-in-out; z-index: 1002; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+        /* Sidebar Styling */
+        .sidebar { 
+            position: fixed; 
+            left: -280px; /* Hidden initially */
+            top: 0; 
+            height: 100vh; 
+            width: 280px; 
+            background: white; 
+            color: var(--dark-blue); 
+            transition: left 0.3s ease-in-out; 
+            z-index: 1002; 
+            padding: 20px; 
+            overflow-y: auto; 
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1); 
+        }
         .sidebar.active { left: 0; }
         
-        /* Overlay - FIXED */
+        /* Overlay */
         .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1001; }
         .sidebar-overlay.active { display: block; }
         
@@ -59,7 +72,7 @@
         .nav-item.active { color: var(--primary-blue); font-weight: 600; }
         .nav-item i { font-size: 1.3rem; margin-bottom: 4px; display: block; }
         
-        /* Icon Animation - FIXED */
+        /* Icon Rotation Animation */
         .menu-icon { transition: transform 0.3s ease; display: inline-block; }
         .menu-icon.active { transform: rotate(90deg); }
         
@@ -110,7 +123,7 @@
             <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>
         </div>
     </div>
-
+    
     <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
         <div id="announcements" class="section-panel active-panel">
             <div class="card p-4 text-center">
@@ -275,17 +288,18 @@
     }
     // ---------------------------------
 
-    // Updated toggleSidebar with icon animation - FIXED
+    // UPDATED: toggleSidebar with icon swapping (bars <-> times)
     function toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('overlay');
         const menuIcon = document.getElementById('menuIcon');
 
+        // Toggle visibility classes
         sidebar.classList.toggle('active');
         overlay.classList.toggle('active');
         menuIcon.classList.toggle('active');
         
-        // Switch between bars and times (X) icon
+        // SWITCH ICON: Check if sidebar is active to determine which icon to show
         if (sidebar.classList.contains('active')) {
             menuIcon.classList.remove('fa-bars');
             menuIcon.classList.add('fa-times');
@@ -401,7 +415,7 @@
         }
     }
 
-    // --- Role-Based Data Loading (Unchanged) ---
+    // --- Role-Based Data Loading ---
     async function loadMaterials() {
         const user = JSON.parse(localStorage.getItem('currentUser'));
         const list = document.getElementById('material-list');
