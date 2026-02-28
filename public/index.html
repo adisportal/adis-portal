@@ -27,13 +27,15 @@
         #main-app { display: none; }
         .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
-        /* Sidebar Styling */
-        .sidebar { position: fixed; left: -280px; top: 0; height: 100%; width: 280px; background: white; color: var(--dark-blue); transition: 0.3s ease; z-index: 1001; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+        /* Sidebar Styling - UPDATED */
+        .sidebar { position: fixed; left: -280px; top: 0; height: 100vh; width: 280px; background: white; color: var(--dark-blue); transition: left 0.3s ease-in-out; z-index: 1002; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
         .sidebar.active { left: 0; }
-        .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        
+        /* Overlay - UPDATED */
+        .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1001; }
         .sidebar-overlay.active { display: block; }
         
-        /* Profile Section in Sidebar - UPDATED */
+        /* Profile Section in Sidebar */
         .profile-section { background: var(--light-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px; cursor: pointer; text-align: center; transition: background 0.2s; }
         .profile-section:hover { background: #edf2f9; }
         .profile-details { display: none; margin-top: 15px; border-top: 1px solid #e3e6f0; padding-top: 15px; text-align: left; }
@@ -57,6 +59,10 @@
         .nav-item.active { color: var(--primary-blue); font-weight: 600; }
         .nav-item i { font-size: 1.3rem; margin-bottom: 4px; display: block; }
         
+        /* Icon Animation - NEW */
+        .menu-icon { transition: transform 0.3s ease; }
+        .menu-icon.active { transform: rotate(90deg); }
+        
         /* Utility */
         .role-badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,0.05); color: var(--primary-blue); font-weight: bold;}
     </style>
@@ -76,7 +82,7 @@
 
 <div id="main-app">
     <div class="top-bar shadow-sm">
-        <i class="fas fa-bars fs-4" style="cursor:pointer; color: var(--dark-blue);" onclick="toggleSidebar()"></i>
+        <i class="fas fa-bars fs-4 menu-icon" id="menuIcon" style="cursor:pointer; color: var(--dark-blue);" onclick="toggleSidebar()"></i>
         <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
         <i class="fas fa-search fs-5 text-muted" style="cursor:pointer;"></i>
     </div>
@@ -225,6 +231,9 @@
 
 <script>
     // --- App Logic ---
+    let touchStartX = 0; // Swipe tracking
+    let touchEndX = 0;
+
     window.onload = function() {
         const savedUser = localStorage.getItem('currentUser');
         if (savedUser) {
@@ -233,12 +242,46 @@
         }
     };
 
+    // --- NEW SWIPE GESTURE LOGIC ---
+    document.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+    });
+
+    document.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+    });
+
+    function handleSwipe() {
+        const sidebar = document.getElementById('sidebar');
+        // If swipe left is detected and sidebar is open, close it
+        if (sidebar.classList.contains('active') && (touchStartX - touchEndX > 50)) {
+            toggleSidebar();
+        }
+    }
+    // ---------------------------------
+
+    // Updated toggleSidebar with icon animation
     function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('active');
-        document.getElementById('overlay').classList.toggle('active');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        const menuIcon = document.getElementById('menuIcon');
+
+        sidebar.classList.toggle('active');
+        overlay.classList.toggle('active');
+        menuIcon.classList.toggle('active');
+        
+        // Switch between bars and times (X) icon
+        if (menuIcon.classList.contains('active')) {
+            menuIcon.classList.remove('fa-bars');
+            menuIcon.classList.add('fa-times');
+        } else {
+            menuIcon.classList.remove('fa-times');
+            menuIcon.classList.add('fa-bars');
+        }
     }
 
-    // Toggle Profile Details - NEW FUNCTION
+    // Toggle Profile Details
     function toggleProfile() {
         document.getElementById('profileToggle').classList.toggle('active');
     }
@@ -283,7 +326,7 @@
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('main-app').style.display = 'block';
         
-        // Set Profile Data - UPDATED
+        // Set Profile Data
         document.getElementById('user-display-name').innerText = user.name;
         document.getElementById('user-display-role').innerText = user.role.toUpperCase();
         document.getElementById('user-display-class').innerText = user.classId || 'N/A';
