@@ -8,14 +8,7 @@
     <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        :root { 
-            --primary-blue: #0061f2; 
-            --dark-blue: #0e1c36; 
-            --light-bg: #f8f9fc; 
-            --success-green: #28a745; 
-            --danger-red: #dc3545; 
-            --card-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        }
+        :root { --primary-blue: #0061f2; --dark-blue: #0e1c36; --light-bg: #f8f9fc; --success-green: #28a745; --danger-red: #dc3545; }
         body { background-color: var(--light-bg); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
         
         /* Login Page Styling */
@@ -25,35 +18,28 @@
         
         /* App Layout */
         #main-app { display: none; }
-        .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; }
+        .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
         /* Sidebar Styling */
-        .sidebar { position: fixed; left: -280px; top: 0; height: 100%; width: 280px; background: white; color: var(--dark-blue); transition: 0.3s ease; z-index: 1001; padding: 30px 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+        .sidebar { position: fixed; left: -280px; top: 0; height: 100%; width: 280px; background: var(--dark-blue); color: white; transition: 0.3s ease; z-index: 1001; padding: 30px 20px; overflow-y: auto; }
         .sidebar.active { left: 0; }
         .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
         .sidebar-overlay.active { display: block; }
         
-        /* Navigation Links (Sidebar) */
-        .nav-link { color: #555; cursor: pointer; margin-bottom: 5px; padding: 12px 15px; border-radius: 12px; text-decoration: none; display: flex; align-items: center; transition: 0.2s; font-weight: 500;}
-        .nav-link:hover { background: #f0f4ff; color: var(--primary-blue); }
-        .active-link { background: #f0f4ff !important; color: var(--primary-blue) !important; }
+        /* Navigation Links */
+        .nav-link { color: #cbd5e0; cursor: pointer; margin-bottom: 10px; padding: 12px 15px; border-radius: 12px; text-decoration: none; display: flex; align-items: center; transition: 0.2s; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); color: white; }
+        .active-link { background: var(--primary-blue) !important; color: white !important; }
         
-        /* Content Area */
-        .content-area { max-width: 800px; margin: 20px auto; padding: 0 15px; padding-bottom: 100px; }
-        .section-panel { display: none; animation: slideUp 0.3s ease-out; }
+        .content-area { max-width: 800px; margin: 20px auto; padding: 0 15px; padding-bottom: 80px; }
+        .section-panel { display: none; animation: slideUp 0.4s ease-out; }
         .active-panel { display: block; }
-        .card { border: none; border-radius: 16px; box-shadow: var(--card-shadow); margin-bottom: 15px; background: white; padding: 20px; }
+        .card { border: none; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 15px; background: white; padding: 20px; }
         
-        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        /* Bottom Navigation Bar */
-        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; height: 70px; background: white; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #e3e6f0; z-index: 999; padding-bottom: 5px; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
-        .nav-item { text-align: center; color: #6c757d; cursor: pointer; font-size: 0.75rem; flex: 1; transition: 0.2s; }
-        .nav-item.active { color: var(--primary-blue); font-weight: 600; }
-        .nav-item i { font-size: 1.3rem; margin-bottom: 4px; display: block; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         
         /* Utility */
-        .role-badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,0.05); color: var(--primary-blue); font-weight: bold;}
+        .role-badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 10px; background: rgba(255,255,255,0.2); }
     </style>
 </head>
 <body>
@@ -71,41 +57,41 @@
 
 <div id="main-app">
     <div class="top-bar shadow-sm">
-        <i class="fas fa-bars fs-4" style="cursor:pointer; color: var(--dark-blue); margin-right: 15px;" onclick="toggleSidebar()"></i>
+        <i class="fas fa-bars fs-4" style="cursor:pointer" onclick="toggleSidebar()"></i>
         <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
+        <div></div>
     </div>
 
     <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
     <div class="sidebar" id="sidebar">
-        <div class="text-center mb-4 border-bottom pb-3">
-            <div style="width:60px; height:60px; background:var(--light-bg); border-radius:50%; margin: 0 auto 10px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:var(--primary-blue)">
-                <i class="fas fa-user"></i>
-            </div>
-            <h5 class="fw-bold mb-1" id="user-display-name"></h5>
+        <div class="text-center mb-4">
+            <h5 class="fw-bold">ADIS MIS</h5>
+            <div id="user-display-name"></div>
             <span class="role-badge" id="user-display-role"></span>
         </div>
         <div id="nav-menu">
-            <div class="nav-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>
+            <div class="nav-link active-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>
             
             <div class="nav-link role-admin" style="display:none;" onclick="showSection('admin-teachers', 'Manage Teachers')"><i class="fas fa-chalkboard-teacher me-3"></i> Manage Teachers</div>
             
             <div class="nav-link role-staff" style="display:none;" onclick="showSection('staff-students', 'Manage Students')"><i class="fas fa-user-graduate me-3"></i> Manage Students</div>
+            <div class="nav-link role-staff" style="display:none;" onclick="showSection('attendance', 'Attendance')"><i class="fas fa-user-check me-3"></i> Attendance</div>
+            <div class="nav-link role-staff" style="display:none;" onclick="showSection('fees', 'Fees')"><i class="fas fa-credit-card me-3"></i> Fees</div>
+            <div class="nav-link role-staff" style="display:none;" onclick="showSection('study-material', 'Materials')"><i class="fas fa-book me-3"></i> Materials</div>
             
-            <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>
+            <div class="nav-link role-student" style="display:none;" onclick="showSection('attendance', 'My Attendance')"><i class="fas fa-user-check me-3"></i> Attendance</div>
+            <div class="nav-link role-student" style="display:none;" onclick="showSection('fees', 'My Fees')"><i class="fas fa-credit-card me-3"></i> Fees</div>
+            <div class="nav-link role-student" style="display:none;" onclick="showSection('study-material', 'Study Materials')"><i class="fas fa-book me-3"></i> Materials</div>
         </div>
+        <button class="btn btn-link text-white-50 w-100 mt-5" onclick="logout()">Logout</button>
     </div>
 
-    <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
-        <div id="announcements" class="section-panel active-panel">
-            <div class="card p-4 text-center">
+    <div class="content-area">
+        <div id="announcements" class="section-panel active-panel text-center">
+            <div class="card p-5">
                 <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
-                <h5 class="fw-bold">Welcome back!</h5>
+                <h5>Welcome to the Portal</h5>
                 <p class="text-muted small">Access your class materials and fee records securely.</p>
-            </div>
-            <h6 class="fw-bold mb-3">Quick Actions</h6>
-            <div class="row g-2">
-                <div class="col-6"><div class="card p-3 text-center" onclick="showSection('attendance', 'Attendance')"><i class="fas fa-calendar-check text-success fa-2x mb-2"></i><br>Attendance</div></div>
-                <div class="col-6"><div class="card p-3 text-center" onclick="showSection('fees', 'Fees')"><i class="fas fa-wallet text-warning fa-2x mb-2"></i><br>Fees</div></div>
             </div>
         </div>
 
@@ -199,25 +185,12 @@
             <div id="material-list">Loading materials...</div>
         </div>
     </div>
-
-    <div class="bottom-nav">
-        <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">
-            <i class="fas fa-home"></i>Home
-        </div>
-        <div class="nav-item" id="nav-att" onclick="showSection('attendance', 'Attendance')">
-            <i class="fas fa-user-check"></i>Attendance
-        </div>
-        <div class="nav-item" id="nav-fees" onclick="showSection('fees', 'Fees')">
-            <i class="fas fa-credit-card"></i>Fees
-        </div>
-        <div class="nav-item" id="nav-mat" onclick="showSection('study-material', 'Materials')">
-            <i class="fas fa-book"></i>Materials
-        </div>
-    </div>
 </div>
 
 <script>
     // --- App Logic ---
+
+    // AUTO-LOGIN FUNCTIONALITY
     window.onload = function() {
         const savedUser = localStorage.getItem('currentUser');
         if (savedUser) {
@@ -229,14 +202,6 @@
     function toggleSidebar() {
         document.getElementById('sidebar').classList.toggle('active');
         document.getElementById('overlay').classList.toggle('active');
-    }
-
-    // NEW FUNCTION: Hide sidebar when clicking center
-    function hideSidebarOnCenterClick() {
-        const sidebar = document.getElementById('sidebar');
-        if (sidebar.classList.contains('active')) {
-            toggleSidebar();
-        }
     }
 
     async function handleLogin() {
@@ -255,6 +220,7 @@
             const result = await res.json();
             
             if (result.success) {
+                // PERSISTENT LOGIN
                 localStorage.setItem('currentUser', JSON.stringify(result.user));
                 activateApp(result.user);
             } else {
@@ -267,6 +233,7 @@
         }
     }
 
+    // Helper to activate app UI
     function activateApp(user) {
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('main-app').style.display = 'block';
@@ -283,7 +250,10 @@
     }
 
     function setupNav(role) {
+        // Hide all
         document.querySelectorAll('.role-admin, .role-staff, .role-student').forEach(el => el.style.display = 'none');
+        
+        // Show relevant
         if (role === 'admin') {
             document.querySelectorAll('.role-admin, .role-staff').forEach(el => el.style.display = 'flex');
         } else if (role === 'teacher') {
@@ -301,40 +271,213 @@
 
     function showSection(id, title) {
         document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
-        const panel = document.getElementById(' + id + ');
-        if(panel) panel.classList.add('active-panel');
+        document.getElementById(id).classList.add('active-panel');
         document.getElementById('header-title').innerText = title;
         
-        // Update Bottom Nav active state
-        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-        
-        // Data Loading
         if (id === 'fees') loadFees();
         if (id === 'study-material') loadMaterials();
         if (id === 'attendance') loadAttendanceSection();
         if (id === 'admin-teachers') loadTeachers();
         if (id === 'staff-students') loadClassStudents();
         
-        // Hide sidebar if open
-        if(document.getElementById('sidebar').classList.contains('active')) {
-            toggleSidebar();
+        toggleSidebar();
+    }
+
+    // --- Role-Based Data Loading ---
+
+    // Admin: Manage Teachers
+    async function addTeacher(btn) {
+        const data = {
+            name: document.getElementById('t-name').value,
+            studentId: document.getElementById('t-id').value,
+            password: document.getElementById('t-pass').value,
+            classId: document.getElementById('t-class').value
+        };
+        btn.disabled = true;
+        const res = await fetch('/api/admin/teachers', { 
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) 
+        });
+        if ((await res.json()).success) { alert("Teacher Added!"); btn.disabled = false; loadTeachers(); }
+    }
+
+    async function loadTeachers() {
+        const list = document.getElementById('teacher-list');
+        list.innerHTML = "Fetching...";
+        // Note: Needs a GET endpoint in backend, creating a mock behavior for delete
+        list.innerHTML = `<div class="card p-2 text-center">To see a list of teachers, connect a GET /api/teachers endpoint.</div>`;
+    }
+
+    // Teacher/Admin: Manage Students
+    async function addStudent(btn) {
+        const data = {
+            name: document.getElementById('s-name').value,
+            studentId: document.getElementById('s-id').value,
+            password: document.getElementById('s-pass').value,
+            classId: document.getElementById('s-class').value,
+            totalFees: parseFloat(document.getElementById('s-fees').value)
+        };
+        btn.disabled = true;
+        const res = await fetch('/api/teacher/students', { 
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) 
+        });
+        if ((await res.json()).success) { alert("Student Added!"); btn.disabled = false; loadClassStudents(); }
+    }
+
+    async function loadClassStudents() {
+        const classId = document.getElementById('search-class').value;
+        const list = document.getElementById('student-list-mgmt');
+        if(!classId) { list.innerHTML = "Enter a class to search."; return; }
+        list.innerHTML = "Loading...";
+        const res = await fetch(`/api/students/class/${classId}`);
+        const data = await res.json();
+        list.innerHTML = data.map(s => `
+            <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                <span>${s.name} (${s.studentId})</span>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteStudent('${s.studentId}')">Delete</button>
+            </div>
+        `).join('') || "No students found.";
+    }
+
+    async function deleteStudent(id) {
+        if(!confirm("Are you sure?")) return;
+        await fetch(`/api/teacher/students/${id}`, { method: 'DELETE' });
+        loadClassStudents();
+    }
+
+    // --- Existing Features ---
+    async function loadMaterials() {
+        // Updated to use localStorage
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const list = document.getElementById('material-list');
+        list.innerHTML = "Fetching...";
+        
+        try {
+            const res = await fetch(`/api/materials/${user.classId}`);
+            const data = await res.json();
+            list.innerHTML = data.map(m => `
+                <div class="card p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0 fw-bold">${m.title}</h6>
+                            <small class="text-muted">${new Date(m.date).toLocaleDateString()}</small>
+                        </div>
+                        <a href="${m.link}" target="_blank" class="button small">Open</a>
+                    </div>
+                </div>`).join('') || "No materials found.";
+        } catch (e) { list.innerHTML = "Error."; }
+    }
+
+    async function uploadMaterial(btn) {
+        const data = {
+            title: document.getElementById('mat-title').value,
+            link: document.getElementById('mat-link').value,
+            classId: document.getElementById('mat-class').value
+        };
+        btn.disabled = true;
+        const res = await fetch('/api/materials', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+        if ((await res.json()).success) { alert("Material Added!"); btn.disabled = false; loadMaterials(); }
+    }
+
+    async function submitFeeUpdate(btn) {
+        const data = { studentId: document.getElementById('fee-sid').value, amountPaid: parseFloat(document.getElementById('fee-paid').value) };
+        btn.disabled = true;
+        const res = await fetch('/api/fees/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+        if ((await res.json()).success) { alert("Fee Updated!"); btn.disabled = false; }
+    }
+
+    async function loadFees() {
+        // Updated to use localStorage
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const content = document.getElementById('fee-content');
+        
+        if (user.role === 'admin' || user.role === 'teacher') {
+            document.getElementById('fee-admin-controls').style.display = 'block';
+        }
+
+        try {
+            const res = await fetch(`/api/student/profile/${user.id}`);
+            const data = await res.json();
+            if (data) {
+                const remaining = data.totalFees - data.feesPaid;
+                content.innerHTML = `
+                    <div class="card bg-primary text-white p-4 text-center mb-3">
+                        <small>REMAINING BALANCE</small>
+                        <h1 class="fw-bold">₹${remaining}</h1>
+                        <span class="badge bg-white text-primary">Status: ${remaining > 0 ? 'Pending' : 'Paid'}</span>
+                    </div>
+                    <div class="card p-3">
+                        <div class="d-flex justify-content-between"><span>Total:</span><strong>₹${data.totalFees}</strong></div>
+                        <div class="d-flex justify-content-between"><span>Paid:</span><strong class="text-success">₹${data.feesPaid}</strong></div>
+                    </div>`;
+            }
+        } catch (e) { content.innerHTML = "Error loading fees."; }
+    }
+
+    document.getElementById('att-date-select').valueAsDate = new Date();
+
+    async function loadAttendanceSection() {
+        // Updated to use localStorage
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        if (user.role === 'admin' || user.role === 'teacher') {
+            document.getElementById('teacher-attendance-controls').style.display = 'block';
+            document.getElementById('student-attendance-view').style.display = 'none';
+        } else {
+            document.getElementById('teacher-attendance-controls').style.display = 'none';
+            document.getElementById('student-attendance-view').style.display = 'block';
+            loadStudentAttendanceView(user.id);
         }
     }
 
-    // --- Role-Based Data Loading (Unchanged) ---
-    async function loadMaterials() { /* ... */ }
-    async function uploadMaterial(btn) { /* ... */ }
-    async function submitFeeUpdate(btn) { /* ... */ }
-    async function loadFees() { /* ... */ }
-    async function loadAttendanceSection() { /* ... */ }
-    async function loadClassAttendance() { /* ... */ }
-    async function markAttendance(studentId, status) { /* ... */ }
-    async function loadStudentAttendanceView(studentId) { /* ... */ }
-    async function addTeacher(btn) { /* ... */ }
-    async function loadTeachers() { /* ... */ }
-    async function addStudent(btn) { /* ... */ }
-    async function loadClassStudents() { /* ... */ }
-    async function deleteStudent(id) { /* ... */ }
+    async function loadClassAttendance() {
+        const classId = document.getElementById('att-class-select').value;
+        const date = document.getElementById('att-date-select').value;
+        if (!classId || !date) return;
+        const listContainer = document.getElementById('class-student-list');
+        listContainer.innerHTML = "Loading...";
+        const studentsRes = await fetch(`/api/students/class/${classId}`);
+        const students = await studentsRes.json();
+        const attRes = await fetch(`/api/attendance/${classId}/${date}`);
+        const existingAtt = await attRes.json();
+        const attMap = {};
+        existingAtt.forEach(a => attMap[a.studentId] = a.status);
+        listContainer.innerHTML = students.map(s => `
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                <span>${s.name}</span>
+                <div>
+                    <button class="btn btn-sm ${attMap[s.studentId] === 'Present' ? 'btn-success' : 'btn-outline-success'}" onclick="markAttendance('${s.studentId}', 'Present')">P</button>
+                    <button class="btn btn-sm ${attMap[s.studentId] === 'Absent' ? 'btn-danger' : 'btn-outline-danger'}" onclick="markAttendance('${s.studentId}', 'Absent')">A</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function markAttendance(studentId, status) {
+        const date = document.getElementById('att-date-select').value;
+        const classId = document.getElementById('att-class-select').value;
+        await fetch('/api/attendance/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ studentId, date, status, classId }) });
+        loadClassAttendance();
+    }
+
+    async function loadStudentAttendanceView(studentId) {
+        const res = await fetch(`/api/student/attendance/${studentId}`);
+        const records = await res.json();
+        const listContainer = document.getElementById('student-attendance-list');
+        const progressBar = document.getElementById('att-progress-bar');
+        let presentDays = records.filter(r => r.status === 'Present').length;
+        let totalDays = records.length;
+        let percentage = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : 0;
+        progressBar.style.width = percentage + "%";
+        progressBar.innerText = percentage + "%";
+        progressBar.className = percentage >= 75 ? "progress-bar bg-success" : "progress-bar bg-danger";
+        document.getElementById('att-stats').innerText = `${presentDays} Present / ${totalDays} Total Days`;
+        listContainer.innerHTML = records.map(r => `
+            <div class="card p-2 mb-1 d-flex justify-content-between">
+                <span>${r.date}</span>
+                <span class="badge ${r.status === 'Present' ? 'bg-success' : 'bg-danger'}">${r.status}</span>
+            </div>
+        `).join('') || "No records.";
+    }
+
 </script>
 </body>
 </html>
