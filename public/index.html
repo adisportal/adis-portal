@@ -16,7 +16,8 @@
             --danger-red: #dc3545; 
             --card-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
-        body { background-color: var(--light-bg); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
+        /* Added touch-action for better mobile scrolling */
+        body { background-color: var(--light-bg); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; touch-action: pan-y; }
         
         /* Login Page Styling */
         #login-page { height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at top right, #1a2a3a, #0e1c36); padding: 20px; }
@@ -27,29 +28,30 @@
         #main-app { display: none; }
         .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
-        /* Sidebar Styling */
+        /* Sidebar Styling - Updated Transition and Z-Index */
         .sidebar { 
             position: fixed; 
-            left: -280px; /* Hidden initially */
+            left: -290px; 
             top: 0; 
             height: 100vh; 
             width: 280px; 
             background: white; 
             color: var(--dark-blue); 
-            transition: left 0.3s ease-in-out; 
-            z-index: 1002; 
+            /* Smoother transition */
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            z-index: 2000; 
             padding: 20px; 
             overflow-y: auto; 
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1); 
+            box-shadow: 4px 0 15px rgba(0,0,0,0.1); 
         }
         .sidebar.active { left: 0; }
         
-        /* Overlay */
-        .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1001; }
+        /* Overlay - Updated Z-Index */
+        .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); z-index: 1500; backdrop-filter: blur(2px); }
         .sidebar-overlay.active { display: block; }
         
         /* Profile Section in Sidebar */
-        .profile-section { background: var(--light-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px; cursor: pointer; text-align: center; transition: background 0.2s; }
+        .profile-section { background: var(--light-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px; cursor: pointer; text-align: center; transition: background 0.2s; border: 1px solid #eee; }
         .profile-section:hover { background: #edf2f9; }
         .profile-details { display: none; margin-top: 15px; border-top: 1px solid #e3e6f0; padding-top: 15px; text-align: left; }
         .profile-section.active .profile-details { display: block; }
@@ -72,9 +74,8 @@
         .nav-item.active { color: var(--primary-blue); font-weight: 600; }
         .nav-item i { font-size: 1.3rem; margin-bottom: 4px; display: block; }
         
-        /* Icon Rotation Animation */
-        .menu-icon { transition: transform 0.3s ease; display: inline-block; }
-        .menu-icon.active { transform: rotate(90deg); }
+        /* Icon Styling */
+        .menu-icon { transition: transform 0.3s ease; display: inline-block; cursor: pointer; color: var(--dark-blue); }
         
         /* Utility */
         .role-badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,0.05); color: var(--primary-blue); font-weight: bold;}
@@ -95,12 +96,15 @@
 
 <div id="main-app">
     <div class="top-bar shadow-sm">
-        <i class="fas fa-bars fs-4 menu-icon" id="menuIcon" style="cursor:pointer; color: var(--dark-blue);" onclick="toggleSidebar()"></i>
+        <div onclick="toggleSidebar()" style="padding: 5px;">
+            <i class="fas fa-bars fs-4 menu-icon" id="menuIcon"></i>
+        </div>
         <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
         <i class="fas fa-search fs-5 text-muted" style="cursor:pointer;"></i>
     </div>
 
     <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+    
     <div class="sidebar" id="sidebar">
         <div class="profile-section" id="profileToggle" onclick="toggleProfile()">
             <div style="width:60px; height:60px; background:white; border-radius:50%; margin: 0 auto 10px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:var(--primary-blue); border: 2px solid #e3e6f0">
@@ -129,7 +133,7 @@
             <div class="card p-4 text-center">
                 <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
                 <h5 class="fw-bold">Welcome back!</h5>
-                <p class="text-muted small">Access your class materials and fee records securely.</p>
+                <p class="text-muted small">Access your class materials and fee records securely. Try swiping from the left edge!</p>
             </div>
         </div>
         
@@ -272,18 +276,25 @@
     // --- SWIPE GESTURE LOGIC ---
     document.addEventListener('touchstart', e => {
         touchStartX = e.changedTouches[0].screenX;
-    });
+    }, {passive: true});
 
     document.addEventListener('touchend', e => {
         touchEndX = e.changedTouches[0].screenX;
         handleSwipe();
-    });
+    }, {passive: true});
 
     function handleSwipe() {
         const sidebar = document.getElementById('sidebar');
-        // If swipe left is detected and sidebar is open, close it
-        if (sidebar.classList.contains('active') && (touchStartX - touchEndX > 50)) {
-            toggleSidebar();
+        const threshold = 100; // Required distance for swipe
+
+        // 1. Swipe Right from left edge to OPEN
+        if (touchEndX - touchStartX > threshold && touchStartX < 50) {
+            if (!sidebar.classList.contains('active')) toggleSidebar();
+        }
+        
+        // 2. Swipe Left to CLOSE
+        if (touchStartX - touchEndX > threshold) {
+            if (sidebar.classList.contains('active')) toggleSidebar();
         }
     }
     // ---------------------------------
@@ -297,7 +308,6 @@
         // Toggle visibility classes
         sidebar.classList.toggle('active');
         overlay.classList.toggle('active');
-        menuIcon.classList.toggle('active');
         
         // SWITCH ICON: Check if sidebar is active to determine which icon to show
         if (sidebar.classList.contains('active')) {
