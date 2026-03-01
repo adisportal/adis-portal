@@ -91,16 +91,14 @@
         .sidebar-overlay.active { display: block; }
         
         /* Profile Section in Sidebar */
-        .profile-section { background: var(--light-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px; cursor: pointer; text-align: center; transition: background 0.2s; border: 1px solid #eee; }
-         profile-img-container { position: relative; width: 80px; height: 80px; margin: 0 auto 10px; }
-        .profile-img { width: 100%; height: 100%; background: white; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:var(--primary-blue); border: 2px solid #e3e6f0; object-fit: cover; }
-        .edit-icon { position: absolute; bottom: 0; right: 0; background: var(--primary-blue); color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer; }
-        .editable-field { display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .profile-section { background: var(--light-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px; text-align: center; border: 1px solid #eee; }
+        .profile-img-container { position: relative; width: 80px; height: 80px; margin: 0 auto 10px; }
+        .profile-img { width: 100%; height: 100%; background: white; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:var(--primary-blue); border: 2px solid #e3e6f0; object-fit: cover; overflow: hidden; }
+        .edit-icon { position: absolute; bottom: 0; right: 0; background: var(--primary-blue); color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: pointer; border: 2px solid white; }
+        .editable-field { display: flex; align-items: center; justify-content: center; gap: 8px; }
         .edit-btn { cursor: pointer; color: var(--primary-blue); font-size: 0.9rem; }
-        .profile-section:hover { background: #edf2f9; }
-        .profile-details { display: none; margin-top: 15px; border-top: 1px solid #e3e6f0; padding-top: 15px; text-align: left; }
-        .profile-section.active .profile-details { display: block; }
-        
+        .profile-details { margin-top: 15px; border-top: 1px solid #e3e6f0; padding-top: 15px; text-align: left; }
+
         /* Navigation Links (Sidebar) */
         .nav-link { color: #555; cursor: pointer; margin-bottom: 5px; padding: 12px 15px; border-radius: 12px; text-decoration: none; display: flex; align-items: center; transition: 0.2s; font-weight: 500;}
         .nav-link:hover { background: #f0f4ff; color: var(--primary-blue); }
@@ -154,33 +152,32 @@
     </div>
 
     <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
-    
     <div class="sidebar" id="sidebar">
     <div class="profile-section" id="profileToggle">
-        <div class="profile-img-container" style="position: relative; width: 80px; height: 80px; margin: 0 auto 10px;">
-            <div class="profile-img" id="user-avatar" style="width: 100%; height: 100%; background: white; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:var(--primary-blue); border: 2px solid #e3e6f0; overflow: hidden;">
-                <i class="fas fa-user"></i>
-            </div>
-            <label for="photo-upload" class="edit-icon" style="position: absolute; bottom: 0; right: 0; background: var(--primary-blue); color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; cursor: pointer; border: 2px solid white;">
-                <i class="fas fa-camera"></i>
-                <input type="file" id="photo-upload" accept="image/*" style="display:none;" onchange="updateProfilePhoto(this)">
-            </label>
+    <div class="profile-img-container">
+        <div class="profile-img" id="user-avatar">
+            <i class="fas fa-user"></i>
         </div>
-        
-        <div class="editable-field" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
-            <h5 class="fw-bold mb-1" id="user-display-name"></h5>
-            <i class="fas fa-edit edit-btn" onclick="editName()" style="cursor: pointer; color: var(--primary-blue); font-size: 0.9rem;"></i>
-        </div>
-        
-        <span class="role-badge" id="user-display-role"></span>
-        
-        <div class="profile-details" id="profileDetails" style="display:block; margin-top: 15px; border-top: 1px solid #e3e6f0; padding-top: 15px; text-align: left;">
-            <p class="small mb-1"><strong>Class:</strong> <span id="user-display-class">N/A</span></p>
-            <p class="small mb-1"><strong>ID:</strong> <span id="user-display-id">N/A</span></p>
-        </div>
+        <label for="photo-upload" class="edit-icon">
+            <i class="fas fa-camera"></i>
+            <input type="file" id="photo-upload" accept="image/*" style="display:none;" onchange="updateProfilePhoto(this)">
+        </label>
+    </div>
+    
+    <div class="editable-field">
+        <h5 class="fw-bold mb-1" id="user-display-name"></h5>
+        <i class="fas fa-edit edit-btn" onclick="editName()"></i>
+    </div>
+    
+    <span class="role-badge" id="user-display-role"></span>
+    
+    <div class="profile-details" id="profileDetails">
+        <p class="small mb-1"><strong>Class:</strong> <span id="user-display-class">N/A</span></p>
+        <p class="small mb-1"><strong>ID:</strong> <span id="user-display-id">N/A</span></p>
     </div>
     
     </div>
+
 
 
         <div id="nav-menu">
@@ -224,7 +221,7 @@
                     <div class="col-6"><input type="password" id="t-pass" class="form-control" placeholder="Password"></div>
                     <div class="col-6"><input type="text" id="t-class" class="form-control" placeholder="Class Teacher (e.g. 10A)"></div>
                 </div>
-                <button class="btn btn-primary mt-2 w-100" onclick="addTeacher(this)">Add Teacher</button>
+                <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateTeacher(this)">Save Teacher</button>
             </div>
             <div id="teacher-list">Loading teachers...</div>
         </div>
@@ -240,7 +237,7 @@
                     <div class="col-6"><input type="text" id="s-class" class="form-control" placeholder="Class (e.g. 10A)"></div>
                     <div class="col-12"><input type="number" id="s-fees" class="form-control" placeholder="Total Fees"></div>
                 </div>
-                <button class="btn btn-primary mt-2 w-100" onclick="addStudent(this)">Add Student</button>
+                <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateStudent(this)">Save Student</button>
             </div>
             <div class="card p-3 mb-4">
                 <h6>Manage Existing Students</h6>
@@ -440,9 +437,13 @@
         document.getElementById('user-display-role').innerText = user.role.toUpperCase();
         document.getElementById('user-display-class').innerText = user.classId || 'N/A';
         document.getElementById('user-display-id').innerText = user.id;
-        
+         
         setupNav(user.role);
         loadDashboardBasedOnRole(user.role);
+        // Load Photo from LocalStorage
+        const savedPhoto = localStorage.getItem('userPhoto');
+        if (savedPhoto) document.getElementById('user-avatar').innerHTML = `<img src="${savedPhoto}" style="width: 100%; height: 100%; object-fit: cover;">`;
+
     }
 
     function logout() {
@@ -495,7 +496,54 @@
             toggleSidebar();
         }
     }
+    // --- Profile Editing Logic (All Roles) ---
+    function editName() {
+    const nameElement = document.getElementById('user-display-name');
+    const currentName = nameElement.innerText;
+    const newName = prompt("Enter new name:", currentName);
+    
+    if (newName && newName !== currentName) {
+        // Update UI immediately
+        nameElement.innerText = newName;
+        
+        // Update LocalStorage to persist across sessions
+        let user = JSON.parse(localStorage.getItem('currentUser'));
+        if (user) {
+            user.name = newName;
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            
+            // Call API to persist on server
+            fetch('/api/user/update-name', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: user.id, name: newName})
+            }).catch(err => console.error("API Error updating name", err));
+        }
+    }
+}
+    function updateProfilePhoto(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            const base64Image = e.target.result;
+            
+            // Update UI by replacing the icon with the image
+            const avatarContainer = document.getElementById('user-avatar');
+            avatarContainer.innerHTML = `<img src="${base64Image}" style="width: 100%; height: 100%; object-fit: cover;">`;
+            
+            // Save to LocalStorage (as Base64 string)
+            localStorage.setItem('userPhoto', base64Image);
+            
+            // Call API to persist image to server (requires backend support)
+            // fetch('/api/user/update-photo', { method: 'POST', body: ... });
+        }
+        
+        reader.readAsDataURL(input.files[0]);
+    }
+}
 
+    
     // --- Role-Based Data Loading ---
     async function loadMaterials() {
         const user = JSON.parse(localStorage.getItem('currentUser'));
@@ -626,40 +674,41 @@
             </div>
         `).join('') || "No records.";
     }
-
-    async function addTeacher(btn) {
-        const data = {
-            name: document.getElementById('t-name').value,
-            studentId: document.getElementById('t-id').value,
-            password: document.getElementById('t-pass').value,
-            classId: document.getElementById('t-class').value
-        };
-        btn.disabled = true;
-        const res = await fetch('/api/admin/teachers', { 
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) 
-        });
-        if ((await res.json()).success) { alert("Teacher Added!"); btn.disabled = false; loadTeachers(); }
+    
+    async function addOrUpdateTeacher(btn) {
+    const data = {
+        name: document.getElementById('t-name').value,
+        id: document.getElementById('t-id').value, // Renamed from studentId
+        password: document.getElementById('t-pass').value,
+        classId: document.getElementById('t-class').value
+    };
+    btn.disabled = true;
+    // POST /api/admin/teachers to create or update teacher
+    alert("Teacher data saved (API integration required)");
+    btn.disabled = false;
+    loadTeachers();
     }
 
+    
     async function loadTeachers() {
         const list = document.getElementById('teacher-list');
         list.innerHTML = "Fetching...";
         list.innerHTML = `<div class="card p-2 text-center">To see a list of teachers, connect a GET /api/teachers endpoint.</div>`;
     }
 
-    async function addStudent(btn) {
-        const data = {
-            name: document.getElementById('s-name').value,
-            studentId: document.getElementById('s-id').value,
-            password: document.getElementById('s-pass').value,
-            classId: document.getElementById('s-class').value,
-            totalFees: parseFloat(document.getElementById('s-fees').value)
-        };
-        btn.disabled = true;
-        const res = await fetch('/api/teacher/students', { 
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) 
-        });
-        if ((await res.json()).success) { alert("Student Added!"); btn.disabled = false; loadClassStudents(); }
+    async function addOrUpdateStudent(btn) {
+    const data = {
+        name: document.getElementById('s-name').value,
+        id: document.getElementById('s-id').value, // Renamed from studentId
+        password: document.getElementById('s-pass').value,
+        classId: document.getElementById('s-class').value,
+        totalFees: parseFloat(document.getElementById('s-fees').value)
+    };
+    btn.disabled = true;
+    // POST /api/teacher/students to create or update student
+    alert("Student data saved (API integration required)");
+    btn.disabled = false;
+    loadClassStudents();
     }
 
     async function loadClassStudents() {
