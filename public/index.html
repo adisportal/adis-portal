@@ -177,20 +177,35 @@
     </div>
     
     </div>
-
-
-
+        
         <div id="nav-menu">
-    <div class="nav-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>                
+    <div class="nav-link" onclick="showSection('announcements', 'Home')">
+        <i class="fas fa-home me-3"></i> Home
+    </div>                
     
-    <div class="nav-link role-admin role-teacher" style="display:none;" onclick="showSection('student-directory', 'Student Directory')">
+    <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('student-directory', 'Student Directory')">
         <i class="fas fa-address-book me-3"></i> Student Directory
     </div>
-    <div class="nav-link role-admin" style="display:none;" onclick="showSection('admin-teachers', 'Admin Panel')"><i class="fas fa-chalkboard-teacher me-3"></i> Admin Panel</div>                
-    <div class="nav-link role-staff" style="display:none;" onclick="showSection('staff-students', 'Manage Students')"><i class="fas fa-user-graduate me-3"></i> Manage Students</div>                
-    <div class="nav-link" onclick="showSection('settings', 'Settings')"><i class="fas fa-cog me-3"></i> Settings</div>                
-    <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>                
+
+    <div class="nav-link" data-role="admin" style="display:none;" onclick="showSection('admin-teachers', 'Admin Panel')">
+        <i class="fas fa-chalkboard-teacher me-3"></i> Admin Panel
+    </div>                
+
+    <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage Students')">
+        <i class="fas fa-user-graduate me-3"></i> Manage Students
+    </div>                
+
+    <div class="nav-link" onclick="showSection('settings', 'Settings')">
+        <i class="fas fa-cog me-3"></i> Settings
+    </div>                
+
+    <div class="nav-link" onclick="logout()">
+        <i class="fas fa-sign-out-alt me-3"></i> Logout
+    </div>                
 </div>
+
+
+        
 
     
     <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
@@ -350,17 +365,14 @@
 </div>
 
 <script>
-        // --- App Logic ---
-    let touchStartX = 0; // Swipe tracking
-    let touchEndX = 0;
+    // --- App Logic ---
+let touchStartX = 0; 
+let touchEndX = 0;
 
-    window.onload = function() {
-    // --- FORCE HIDE SPLASH SCREEN FIRST ---
+window.onload = function() {
+    // Hide splash screen immediately if it exists
     const splash = document.getElementById('splash-screen');                
     if (splash) splash.style.display = 'none';
-    // --------------------------------------
-    // Safe attendance date initialization
-        setTimeout(() => {
 
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
@@ -369,7 +381,6 @@
             activateApp(user);
         } catch (e) {
             console.error("Storage parsing error", e);                
-            // If parsing fails, show login
             document.getElementById('login-page').style.display = 'flex';
         }
     } else {
@@ -377,186 +388,130 @@
     }
 };
 
+// --- SIDEBAR & GESTURES ---
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    const menuIcon = document.getElementById('menuIcon');
+
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
     
-
-
-
-    // --- SWIPE GESTURE LOGIC ---
-    document.addEventListener('touchstart', e => {
-        touchStartX = e.changedTouches[0].screenX;
-    }, {passive: true});
-
-    document.addEventListener('touchend', e => {
-        touchEndX = e.changedTouches[0].screenX;
-        handleSwipe();
-    }, {passive: true});
-
-    function handleSwipe() {
-        const sidebar = document.getElementById('sidebar');
-        const threshold = 100; // Required distance for swipe
-
-        // 1. Swipe Right from left edge to OPEN
-        if (touchEndX - touchStartX > threshold && touchStartX < 50) {
-            if (!sidebar.classList.contains('active')) toggleSidebar();
-        }
-        
-        // 2. Swipe Left to CLOSE
-        if (touchStartX - touchEndX > threshold) {
-            if (sidebar.classList.contains('active')) toggleSidebar();
-        }
+    if (sidebar.classList.contains('active')) {
+        menuIcon.classList.replace('fa-bars', 'fa-times');
+    } else {
+        menuIcon.classList.replace('fa-times', 'fa-bars');
     }
-    // ---------------------------------
-
-    // UPDATED: toggleSidebar with icon swapping (bars <-> times)
-    function toggleSidebar() {
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        const menuIcon = document.getElementById('menuIcon');
-
-        // Toggle visibility classes
-        sidebar.classList.toggle('active');
-        overlay.classList.toggle('active');
-        
-        // SWITCH ICON: Check if sidebar is active to determine which icon to show
-        if (sidebar.classList.contains('active')) {
-            menuIcon.classList.remove('fa-bars');
-            menuIcon.classList.add('fa-times');
-        } else {
-            menuIcon.classList.remove('fa-times');
-            menuIcon.classList.add('fa-bars');
-        }
-    }
-
-    // Toggle Profile Details
-    function toggleProfile() {
-        document.getElementById('profileToggle').classList.toggle('active');
-    }
-
-    // Hide sidebar when clicking center
-    function hideSidebarOnCenterClick() {
-        const sidebar = document.getElementById('sidebar');
-        if (sidebar.classList.contains('active')) {
-            toggleSidebar();
-        }
-    }
-
-    async function handleLogin() {
-        const id = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value.trim();
-        const btn = document.getElementById('loginBtn');
-        btn.innerText = "Authenticating..."; btn.disabled = true;
-
-        try {
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, password })
-            });
-
-            const result = await res.json();
-            
-            if (result.success) {
-                localStorage.setItem('currentUser', JSON.stringify(result.user));
-                activateApp(result.user);
-            } else {
-                alert("Login Failed: " + result.message);
-                btn.innerText = "LOGIN"; btn.disabled = false;
-            }
-        } catch (e) { 
-            alert("Server Error: " + e.message); 
-            btn.innerText = "LOGIN"; btn.disabled = false; 
-        }
-    }
-
-    function activateApp(user) {
-        
-        // Check if splash screen exists before trying to hide it
-const splash = document.getElementById('splash-screen');
-if (splash) {
-    splash.style.opacity = '0';
-    // Small delay to allow the fade-out transition to finish
-    setTimeout(() => {
-        splash.style.display = 'none';
-    }, 500);
 }
-// -----------------------
-        document.getElementById('login-page').style.display = 'none';
-        document.getElementById('main-app').style.display = 'block';
-        // Set Profile Data
-        document.getElementById('user-display-name').innerText = user.name;
-        document.getElementById('user-display-role').innerText = user.role.toUpperCase();
-        document.getElementById('user-display-class').innerText = user.classId || 'N/A';
-        document.getElementById('user-display-id').innerText = user.id;
-         
-        setupNav(user.role);
-        loadDashboardBasedOnRole(user.role);
-        // Load Photo from LocalStorage
-        const savedPhoto = localStorage.getItem('userPhoto');
-        if (savedPhoto) document.getElementById('user-avatar').innerHTML = `<img src="${savedPhoto}" style="width: 100%; height: 100%; object-fit: cover;">`;
 
-    }
+function hideSidebarOnCenterClick() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar.classList.contains('active')) toggleSidebar();
+}
 
-    function logout() {
-        localStorage.removeItem('currentUser');
-        location.reload();
-    }
+// Swipe detection
+document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
+document.addEventListener('touchend', e => { 
+    touchEndX = e.changedTouches[0].screenX;
+    if (touchEndX - touchStartX > 100 && touchStartX < 50) toggleSidebar(); // Swipe Right
+    if (touchStartX - touchEndX > 100 && document.getElementById('sidebar').classList.contains('active')) toggleSidebar(); // Swipe Left
+}, {passive: true});
 
-    function setupNav(role) {
-        // Handle Sidebar
-        document.querySelectorAll('.role-admin, .role-staff, .role-student').forEach(el => el.style.display = 'none');
-        
-        // Handle Bottom Nav
-        document.querySelectorAll('.role-admin-teacher').forEach(el => el.style.display = 'none');
+// --- AUTHENTICATION ---
+async function handleLogin() {
+    const id = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const btn = document.getElementById('loginBtn');
+    if(!id || !password) return alert("Please fill all fields");
 
-        if (role === 'admin') {
-            document.querySelectorAll('.role-admin, .role-staff').forEach(el => el.style.display = 'flex');
-            document.querySelectorAll('.role-admin-teacher').forEach(el => el.style.display = 'flex');
-        } else if (role === 'teacher') {
-            document.querySelectorAll('.role-staff').forEach(el => el.style.display = 'flex');
-            document.querySelectorAll('.role-admin-teacher').forEach(el => el.style.display = 'flex');
+    btn.innerText = "Authenticating..."; btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, password })
+        });
+        const result = await res.json();
+        if (result.success) {
+            localStorage.setItem('currentUser', JSON.stringify(result.user));
+            activateApp(result.user);
         } else {
-            document.querySelectorAll('.role-student').forEach(el => el.style.display = 'flex');
+            alert("Login Failed: " + result.message);
         }
-    }
+    } catch (e) { alert("Server Error"); }
+    btn.innerText = "LOGIN"; btn.disabled = false;
+}
 
-    function loadDashboardBasedOnRole(role) {
-        if(role === 'admin') showSection('admin-teachers', 'Manage Teachers');
-        else if(role === 'teacher') showSection('staff-students', 'Manage Students');
-        else showSection('announcements', 'Home');
-    }
+function activateApp(user) {
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
 
-    function showSection(id, title) {
+    document.getElementById('user-display-name').innerText = user.name;
+    document.getElementById('user-display-role').innerText = user.role.toUpperCase();
+    document.getElementById('user-display-class').innerText = user.classId || 'N/A';
+    document.getElementById('user-display-id').innerText = user.id;
+     
+    setupNav(user.role);
+    loadDashboardBasedOnRole(user.role);
+
+    const savedPhoto = localStorage.getItem('userPhoto');
+    if (savedPhoto) document.getElementById('user-avatar').innerHTML = `<img src="${savedPhoto}" style="width:100%;height:100%;object-fit:cover;">`;
+}
+
+function logout() {
+    localStorage.removeItem('currentUser');
+    location.reload();
+}
+
+// --- NAVIGATION LOGIC ---
+function setupNav(role) {
+    // 1. Sidebar Role Filtering
+    const navLinks = document.querySelectorAll('#nav-menu [data-role]');
+    navLinks.forEach(link => {
+        const allowedRoles = link.getAttribute('data-role').split(',');
+        link.style.display = allowedRoles.includes(role) ? 'flex' : 'none';
+    });
+
+    // 2. Bottom Nav "Manage" Button visibility
+    const bottomManage = document.getElementById('nav-manage');
+    if (role === 'admin' || role === 'teacher') {
+        bottomManage.style.display = 'block';
+    }
+}
+
+function loadDashboardBasedOnRole(role) {
+    if(role === 'admin') showSection('admin-teachers', 'Admin Panel');
+    else if(role === 'teacher') showSection('staff-students', 'Manage Students');
+    else showSection('announcements', 'Home');
+}
+
+function showSection(id, title) {
     document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
     const panel = document.getElementById(id);
     if(panel) panel.classList.add('active-panel');
     document.getElementById('header-title').innerText = title;
     
+    // Update bottom nav active state
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    
-    // --- UPDATED LOADERS ---
-    if (id === 'attendance') {
-        loadClassDropdown();
-        loadAttendanceSection();
-    }
-    
-    if (id === 'admin-teachers') {
-        loadTeachers();                
-        loadClassesForManagement(); // <--- ADD THIS
-    }
+    // (Optional: Match ID to nav-item to highlight the correct icon)
 
-    if (id === 'student-directory') {
-        loadStudentDirectoryClasswise(); // <--- ADD THIS
-    }
-    // ----------------------
-    
+    if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
+    if (id === 'admin-teachers') { loadTeachers(); loadClassesForManagement(); }
+    if (id === 'student-directory') loadStudentDirectoryClasswise();
     if (id === 'fees') loadFees();
     if (id === 'study-material') loadMaterials();
     if (id === 'staff-students') loadClassStudents();
     
-    if(document.getElementById('sidebar').classList.contains('active')) {
-        toggleSidebar();
-    }
+    const sidebar = document.getElementById('sidebar');
+    if(sidebar.classList.contains('active')) toggleSidebar();
 }
+
+// --- DATA LOADING & API CALLS ---
+// (Your existing functions like loadTeachers, loadClassStudents, etc. are correct)
+// Just ensure they are included below this line...
+    
+ 
 
 
     // --- Profile Editing Logic (All Roles) ---
@@ -816,8 +771,8 @@ async function transferStudents() {
     }
 
     async function markAttendance(studentId, status) {
-    const date = document.getElementById('att-date-select').value;
-    const classId = document.getElementById('att-class-select').value;
+        const date = document.getElementById('att-date-select').value;
+        const classId = document.getElementById('att-class-select').value;
 
     await fetch('/api/attendance/update', { 
         method: 'POST', 
@@ -825,8 +780,9 @@ async function transferStudents() {
         body: JSON.stringify({ studentId, date, status, classId }) 
     });
 
-    loadClassAttendance();
-    }
+    loadClassAttendance(); // Now it refreshes with the new data
+}
+
 
     async function loadStudentAttendanceView(studentId) {
         const res = await fetch(`/api/student/attendance/${studentId}`);
