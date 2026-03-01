@@ -365,12 +365,11 @@
 </div>
 
 <script>
-    // --- App Logic ---
+    // --- Global State & Init ---
 let touchStartX = 0; 
 let touchEndX = 0;
 
 window.onload = function() {
-    // Hide splash screen immediately if it exists
     const splash = document.getElementById('splash-screen');                
     if (splash) splash.style.display = 'none';
 
@@ -388,36 +387,7 @@ window.onload = function() {
     }
 };
 
-// --- SIDEBAR & GESTURES ---
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('overlay');
-    const menuIcon = document.getElementById('menuIcon');
-
-    sidebar.classList.toggle('active');
-    overlay.classList.toggle('active');
-    
-    if (sidebar.classList.contains('active')) {
-        menuIcon.classList.replace('fa-bars', 'fa-times');
-    } else {
-        menuIcon.classList.replace('fa-times', 'fa-bars');
-    }
-}
-
-function hideSidebarOnCenterClick() {
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar.classList.contains('active')) toggleSidebar();
-}
-
-// Swipe detection
-document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
-document.addEventListener('touchend', e => { 
-    touchEndX = e.changedTouches[0].screenX;
-    if (touchEndX - touchStartX > 100 && touchStartX < 50) toggleSidebar(); // Swipe Right
-    if (touchStartX - touchEndX > 100 && document.getElementById('sidebar').classList.contains('active')) toggleSidebar(); // Swipe Left
-}, {passive: true});
-
-// --- AUTHENTICATION ---
+// --- Authentication & App Activation ---
 async function handleLogin() {
     const id = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
@@ -464,19 +434,19 @@ function logout() {
     location.reload();
 }
 
-// --- NAVIGATION LOGIC ---
+// --- Navigation & Role Control ---
 function setupNav(role) {
-    // 1. Sidebar Role Filtering
+    // 1. Sidebar Links (using data-role)
     const navLinks = document.querySelectorAll('#nav-menu [data-role]');
     navLinks.forEach(link => {
         const allowedRoles = link.getAttribute('data-role').split(',');
         link.style.display = allowedRoles.includes(role) ? 'flex' : 'none';
     });
 
-    // 2. Bottom Nav "Manage" Button visibility
+    // 2. Bottom Nav "Manage" icon visibility
     const bottomManage = document.getElementById('nav-manage');
-    if (role === 'admin' || role === 'teacher') {
-        bottomManage.style.display = 'block';
+    if (bottomManage) {
+        bottomManage.style.display = (role === 'admin' || role === 'teacher') ? 'block' : 'none';
     }
 }
 
@@ -487,15 +457,30 @@ function loadDashboardBasedOnRole(role) {
 }
 
 function showSection(id, title) {
+    // Hide all panels
     document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
+    
+    // Show selected panel
     const panel = document.getElementById(id);
     if(panel) panel.classList.add('active-panel');
+    
     document.getElementById('header-title').innerText = title;
     
-    // Update bottom nav active state
+    // Highlight Bottom Nav
     document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    // (Optional: Match ID to nav-item to highlight the correct icon)
+    // Match logic: if id is 'announcements', highlight 'nav-home'
+    const navMap = { 
+    'announcements': 'nav-home', 
+    'staff-students': 'nav-manage', 
+    'admin-teachers': 'nav-manage', // Add this line
+    'attendance': 'nav-att', 
+    'fees': 'nav-fees', 
+    'study-material': 'nav-mat' 
+    };
 
+    if(navMap[id]) document.getElementById(navMap[id]).classList.add('active');
+
+    // Trigger Data Loaders
     if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
     if (id === 'admin-teachers') { loadTeachers(); loadClassesForManagement(); }
     if (id === 'student-directory') loadStudentDirectoryClasswise();
@@ -503,63 +488,69 @@ function showSection(id, title) {
     if (id === 'study-material') loadMaterials();
     if (id === 'staff-students') loadClassStudents();
     
-    const sidebar = document.getElementById('sidebar');
-    if(sidebar.classList.contains('active')) toggleSidebar();
+    // Close sidebar if open
+    if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
 }
 
-// --- DATA LOADING & API CALLS ---
-// (Your existing functions like loadTeachers, loadClassStudents, etc. are correct)
-// Just ensure they are included below this line...
-    
- 
+// --- UI Interaction ---
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    const menuIcon = document.getElementById('menuIcon');
 
-
-    // --- Profile Editing Logic (All Roles) ---
-    function editName() {
-    const nameElement = document.getElementById('user-display-name');
-    const currentName = nameElement.innerText;
-    const newName = prompt("Enter new name:", currentName);
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
     
-    if (newName && newName !== currentName) {
-        // Update UI immediately
-        nameElement.innerText = newName;
-        
-        // Update LocalStorage to persist across sessions
-        let user = JSON.parse(localStorage.getItem('currentUser'));
-        if (user) {
-            user.name = newName;
-            localStorage.setItem('currentUser', JSON.stringify(user));
-            
-            // Call API to persist on server
-            fetch('/api/user/update-name', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({id: user.id, name: newName})
-            }).catch(err => console.error("API Error updating name", err));
-        }
+    if (sidebar.classList.contains('active')) {
+        menuIcon.classList.replace('fa-bars', 'fa-times');
+    } else {
+        menuIcon.classList.replace('fa-times', 'fa-bars');
     }
 }
-    function updateProfilePhoto(input) {
+
+function hideSidebarOnCenterClick() {
+    if (document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
+}
+
+// Swipe detection
+document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
+document.addEventListener('touchend', e => { 
+    touchEndX = e.changedTouches[0].screenX;
+    if (touchEndX - touchStartX > 100 && touchStartX < 50) toggleSidebar(); 
+    if (touchStartX - touchEndX > 100 && document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
+}, {passive: true});
+
+// --- Profile Features ---
+function editName() {
+    const nameElement = document.getElementById('user-display-name');
+    const newName = prompt("Enter new name:", nameElement.innerText);
+    if (newName) {
+        nameElement.innerText = newName;
+        let user = JSON.parse(localStorage.getItem('currentUser'));
+        user.name = newName;
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        fetch('/api/user/update-name', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: user.id, name: newName}) });
+    }
+}
+
+function updateProfilePhoto(input) {
     if (input.files && input.files[0]) {
         const reader = new FileReader();
-        
-        reader.onload = function(e) {
-            const base64Image = e.target.result;
-            
-            // Update UI by replacing the icon with the image
-            const avatarContainer = document.getElementById('user-avatar');
-            avatarContainer.innerHTML = `<img src="${base64Image}" style="width: 100%; height: 100%; object-fit: cover;">`;
-            
-            // Save to LocalStorage (as Base64 string)
-            localStorage.setItem('userPhoto', base64Image);
-            
-            // Call API to persist image to server (requires backend support)
-            // fetch('/api/user/update-photo', { method: 'POST', body: ... });
-        }
-        
+        reader.onload = e => {
+            document.getElementById('user-avatar').innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
+            localStorage.setItem('userPhoto', e.target.result);
+        };
         reader.readAsDataURL(input.files[0]);
     }
 }
+
+// --- API Data Loading Functions (Keep your existing versions of these below) ---
+// loadMaterials(), uploadMaterial(), submitFeeUpdate(), loadFees(), 
+// loadAttendanceSection(), loadClassAttendance(), loadClassesForManagement(), 
+// deleteClass(), transferStudents(), loadStudentDirectoryClasswise(), 
+// markAttendance(), loadStudentAttendanceView(), addOrUpdateTeacher(), 
+// loadTeachers(), addOrUpdateStudent(), loadClassStudents(), 
+// deleteStudent(), createClass(), loadClassDropdown(), clearAppData()
 
     
     // --- Role-Based Data Loading ---
