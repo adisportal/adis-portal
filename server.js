@@ -368,7 +368,7 @@ app.get('/api/admin/users-classwise', async (req, res) => {
         res.status(500).json([]);
     }
 });
-// --- ADD TO API ROUTES IN server.js ---
+// ... (all other routes above)
 
 // 18. Get student list based on role (Admin sees all, Teachers see assigned class)
 app.post('/api/teacher/students/list', async (req, res) => {
@@ -389,6 +389,7 @@ app.post('/api/teacher/students/list', async (req, res) => {
     }
 });
 
+// --- REMOVE THE DUPLICATE BLOCK BELOW THIS LINE ---
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
