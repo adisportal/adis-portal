@@ -684,42 +684,115 @@ if (splash) {
             </div>
         `).join('') || "No records.";
     }
-    
-    async function addOrUpdateTeacher(btn) {
+    // --- Updated Management Functions ---
+
+async function addOrUpdateTeacher(btn) {
     const data = {
         name: document.getElementById('t-name').value,
-        id: document.getElementById('t-id').value, // Renamed from studentId
+        id: document.getElementById('t-id').value, 
         password: document.getElementById('t-pass').value,
         classId: document.getElementById('t-class').value
     };
-    btn.disabled = true;
-    // POST /api/admin/teachers to create or update teacher
-    alert("Teacher data saved (API integration required)");
-    btn.disabled = false;
-    loadTeachers();
-    }
-
     
-    async function loadTeachers() {
-        const list = document.getElementById('teacher-list');
-        list.innerHTML = "Fetching...";
-        list.innerHTML = `<div class="card p-2 text-center">To see a list of teachers, connect a GET /api/teachers endpoint.</div>`;
+    // Validation
+    if(!data.id || !data.name) { 
+        alert("Teacher ID and Name are required"); 
+        return; 
     }
+    
+    btn.disabled = true;
+    btn.innerText = "Saving...";
 
+    try {
+        // --- REAL API CALL ---
+        const res = await fetch('/api/admin/teachers/upsert', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await res.json();
+        
+        if (result.success) {
+            alert(result.message); // Will say "Created" or "Updated"
+            loadTeachers(); // Refresh the list
+        } else {
+            alert("Error: " + result.message);
+        }
+    } catch (error) {
+        alert("API Connection Error. Please try again.");
+        console.error(error);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "Save Teacher";
+    }
+}
+    async function loadTeachers() {
+    const list = document.getElementById('teacher-list');
+    list.innerHTML = "Fetching...";
+    
+    try {
+        // --- REAL API CALL ---
+        const res = await fetch('/api/teachers');
+        const data = await res.json();
+        
+        if (data.length > 0) {
+            list.innerHTML = data.map(t => `
+                <div class="card p-2 mb-2 d-flex justify-content-between align-items-center">
+                    <span><strong>${t.name}</strong> (${t.id}) - Class: ${t.classId}</span>
+                </div>
+            `).join('');
+        } else {
+            list.innerHTML = `<div class="card p-2 text-center">No teachers found.</div>`;
+        }
+    } catch (error) {
+        list.innerHTML = `<div class="card p-2 text-center text-danger">Error loading teachers.</div>`;
+        console.error(error);
+    }
+}
     async function addOrUpdateStudent(btn) {
     const data = {
         name: document.getElementById('s-name').value,
-        id: document.getElementById('s-id').value, // Renamed from studentId
+        id: document.getElementById('s-id').value, 
         password: document.getElementById('s-pass').value,
         classId: document.getElementById('s-class').value,
-        totalFees: parseFloat(document.getElementById('s-fees').value)
+        totalFees: parseFloat(document.getElementById('s-fees').value) || 0
     };
-    btn.disabled = true;
-    // POST /api/teacher/students to create or update student
-    alert("Student data saved (API integration required)");
-    btn.disabled = false;
-    loadClassStudents();
+    
+    // Validation
+    if(!data.id || !data.name) { 
+        alert("Student ID and Name are required"); 
+        return; 
     }
+
+    btn.disabled = true;
+    btn.innerText = "Saving...";
+
+    try {
+        // --- REAL API CALL ---
+        const res = await fetch('/api/teacher/students/upsert', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await res.json();
+        
+        if (result.success) {
+            alert(result.message); // Will say "Created" or "Updated"
+            loadClassStudents(); // Refresh the list
+        } else {
+            alert("Error: " + result.message);
+        }
+    } catch (error) {
+        alert("API Connection Error. Please try again.");
+        console.error(error);
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "Save Student";
+    }
+}
+
 
     async function loadClassStudents() {
         const classId = document.getElementById('search-class').value;
