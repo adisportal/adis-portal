@@ -784,6 +784,15 @@ async function addOrUpdateTeacher(btn) {
         } else {
             alert("Error: " + result.message);
         }
+
+    } catch (error) {
+    // --- TEMPORARY ERROR DISPLAY ---
+    alert("Full Error: " + error.message);
+    console.error(error);
+    // ------------------------------
+        javascript:(function(){var script=document.createElement('script');script.src='//cdn.jsdelivr.net/npm/eruda';document.body.appendChild(script);script.onload=function(){eruda.init()}})();
+    }
+
     } catch (error) {
         alert("API Connection Error. Please try again.");
         console.error(error);
