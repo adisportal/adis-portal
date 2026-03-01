@@ -7,6 +7,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // --- MONGODB CLOUD SETUP ---
+// Ensure this URI is correct and your IP is whitelisted in MongoDB Atlas
 const uri = "mongodb+srv://ADMIN:Testing123@cluster0.52yyau2.mongodb.net/?appName=Cluster0";
 const client = new MongoClient(uri);
 
@@ -22,11 +23,10 @@ async function connectToDatabase() {
 }
 connectToDatabase();
 
-// --- FIX: Serve index.html on root route ---
+// --- Serve index.html on root route ---
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
-// ----------------------------------------------
 
 // --- API ROUTES ---
 
@@ -54,7 +54,7 @@ app.post('/api/admin/teachers/upsert', async (req, res) => {
         
         // Hash password only if it's provided
         let updateData = { name, classId, role: "teacher" };
-        if (password) {
+        if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
 
@@ -93,7 +93,7 @@ app.post('/api/teacher/students/upsert', async (req, res) => {
         
         // Hash password only if it's provided
         let updateData = { name, classId, totalFees, role: "student" };
-        if (password) {
+        if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
         
@@ -128,7 +128,7 @@ app.delete('/api/teacher/students/:id', async (req, res) => {
     }
 });
 
-// --- EXISTING ROUTES ---
+// --- EXISTING ROUTES (Maintained) ---
 
 // 3. Get students by class
 app.get('/api/students/class/:classId', async (req, res) => {
@@ -137,6 +137,16 @@ app.get('/api/students/class/:classId', async (req, res) => {
         res.json(students);
     } catch (e) {
         res.status(500).json({ error: "Database error" });
+    }
+});
+
+// Get all teachers
+app.get('/api/teachers', async (req, res) => {
+    try {
+        const teachers = await db.collection('users').find({ role: "teacher" }).toArray();
+        res.json(teachers);
+    } catch (e) {
+        res.status(500).json([]);
     }
 });
 
