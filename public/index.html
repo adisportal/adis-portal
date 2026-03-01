@@ -322,7 +322,7 @@
 </div>
 
 <script>
-    // --- App Logic ---
+        // --- App Logic ---
     let touchStartX = 0; // Swipe tracking
     let touchEndX = 0;
 
@@ -331,8 +331,14 @@
         if (savedUser) {
             const user = JSON.parse(savedUser);
             activateApp(user);
+        } else {
+            // --- ADD THIS LINE ---
+            // If no user is logged in, hide splash immediately to show login
+            document.getElementById('splash-screen').style.display = 'none';
+            // ---------------------
         }
     };
+
 
 
     // --- SWIPE GESTURE LOGIC ---
@@ -424,12 +430,16 @@
 
     function activateApp(user) {
         
-        // --- HIDE THE SPLASH SCREEN ---
-        document.getElementById('splash-screen').style.opacity = '0';
-        setTimeout(() => {
-        document.getElementById('splash-screen').style.display = 'none';}, 500);
-        // -----------------------------
-
+        // Check if splash screen exists before trying to hide it
+const splash = document.getElementById('splash-screen');
+if (splash) {
+    splash.style.opacity = '0';
+    // Small delay to allow the fade-out transition to finish
+    setTimeout(() => {
+        splash.style.display = 'none';
+    }, 500);
+}
+// -----------------------
         document.getElementById('login-page').style.display = 'none';
         document.getElementById('main-app').style.display = 'block';
         // Set Profile Data
