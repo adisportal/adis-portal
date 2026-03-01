@@ -322,24 +322,25 @@
 </div>
 
 <script>
-    alert("Script is running!"); // --- ADD THIS TO TEST ---                
-
         // --- App Logic ---
     let touchStartX = 0; // Swipe tracking
     let touchEndX = 0;
 
     window.onload = function() {
-        const savedUser = localStorage.getItem('currentUser');
-        if (savedUser) {
-            const user = JSON.parse(savedUser);
-            activateApp(user);
-        } else {
-            // --- ADD THIS LINE ---
-            // If no user is logged in, hide splash immediately to show login
-            document.getElementById('splash-screen').style.display = 'none';
-            // ---------------------
-        }
-    };
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+        const user = JSON.parse(savedUser);
+        activateApp(user); // Triggers fade-out logic
+    } else {
+        // --- Edit here if you want to delay showing the login page ---
+        const splash = document.getElementById('splash-screen');
+        if (splash) splash.style.display = 'none'; // Instant removal if not logged in
+        // -------------------------------------------------------------
+        document.getElementById('login-page').style.display = 'flex';
+    }
+};
+
+    
 
 
 
