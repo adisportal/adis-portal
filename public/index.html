@@ -212,19 +212,27 @@
         </div>
 
         <div id="admin-teachers" class="section-panel">
-            <h3 class="fw-bold mb-4">🏫 Manage Teachers</h3>
+            <h3 class="fw-bold mb-4">🏫 Admin Panel</h3>
             <div class="card p-3 mb-4">
-                <h6>Add New Teacher</h6>
-                <div class="row g-2">
-                    <div class="col-6"><input type="text" id="t-name" class="form-control" placeholder="Full Name"></div>
-                    <div class="col-6"><input type="text" id="t-id" class="form-control" placeholder="Teacher ID"></div>
-                    <div class="col-6"><input type="password" id="t-pass" class="form-control" placeholder="Password"></div>
-                    <div class="col-6"><input type="text" id="t-class" class="form-control" placeholder="Class Teacher (e.g. 10A)"></div>
-                </div>
-                <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateTeacher(this)">Save Teacher</button>
-            </div>
-            <div id="teacher-list">Loading teachers...</div>
+            <h6>Create New Class</h6>
+            <div class="row g-2">
+            <div class="col-8"><input type="text" id="new-class-name" class="form-control" placeholder="Class Name (e.g. 10A)"></div>
+            <div class="col-4"><button class="btn btn-success w-100" onclick="createClass()">Add</button></div>
         </div>
+    </div>
+            
+    <div class="card p-3 mb-4">
+        <h6>Add/Update Teacher</h6>
+        <div class="row g-2">
+            <div class="col-6"><input type="text" id="t-name" class="form-control" placeholder="Full Name"></div>
+            <div class="col-6"><input type="text" id="t-id" class="form-control" placeholder="Teacher ID"></div>
+            <div class="col-6"><input type="password" id="t-pass" class="form-control" placeholder="Password"></div>
+            <div class="col-6"><input type="text" id="t-class" class="form-control" placeholder="Class Teacher (e.g. 10A)"></div>
+        </div>
+        <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateTeacher(this)">Save Teacher</button>
+    </div>
+    <div id="teacher-list">Loading teachers...</div>
+</div>
 
         <div id="staff-students" class="section-panel">
             <h3 class="fw-bold mb-4">🎓 Manage Students</h3>
@@ -250,17 +258,28 @@
             <h3 class="fw-bold mb-4">📊 Attendance</h3>
             <div id="teacher-attendance-controls" class="card p-3 mb-4" style="display:none;">
                 <div class="row g-2">
-                    <div class="col-6">
-                        <select id="att-class-select" class="form-select" onchange="loadClassAttendance()">
-                            <option value="">Select Class</option>
-                            <option value="10A">Class 10-A</option>
-                            <option value="10B">Class 10-B</option>
-                        </select>
-                    </div>
-                    <div class="col-6"><input type="date" id="att-date-select" class="form-control" onchange="loadClassAttendance()"></div>
-                </div>
-                <div id="class-student-list" class="mt-3"></div>
+                <div class="col-6">
+                <select id="att-class-select" class="form-select" onchange="loadClassAttendance()">
+                <option value="">Select Class</option>
+            </select>
             </div>
+            <div class="col-6"><input type="date" id="att-date-select" class="form-control" onchange="loadClassAttendance()"></div>
+        </div>
+            <div id="class-student-list" class="mt-3"></div>
+    </div>
+
+    <div id="student-attendance-view" style="display:none;">
+        <div class="card p-3 text-center">
+            <h5>Overall Attendance</h5>
+            <div class="progress" style="height: 25px;">
+                <div id="att-progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" >0%</div>
+            </div>
+            <small id="att-stats" class="text-muted"></small>
+        </div>
+        <div id="student-attendance-list"></div>
+    </div>
+</div>
+
 
             <div id="student-attendance-view" style="display:none;">
                 <div class="card p-3 text-center">
@@ -500,22 +519,29 @@ if (splash) {
         const panel = document.getElementById(id);
         if(panel) panel.classList.add('active-panel');
         document.getElementById('header-title').innerText = title;
-        
-        // Update Bottom Nav active state
+    
+    // Update Bottom Nav active state
         document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-        
-        // Data Loading
+    
+    // --- UPDATED: Call dropdown loader when attendance section is shown ---
+        if (id === 'attendance') {
+            loadClassDropdown(); // <--- ADDED THIS LINE
+            loadAttendanceSection();
+    }
+    // ----------------------------------------------------------------------
+    
+    // Data Loading for other sections
         if (id === 'fees') loadFees();
         if (id === 'study-material') loadMaterials();
-        if (id === 'attendance') loadAttendanceSection();
         if (id === 'admin-teachers') loadTeachers();
         if (id === 'staff-students') loadClassStudents();
-        
-        // Hide sidebar if open
+    
+    // Hide sidebar if open
         if(document.getElementById('sidebar').classList.contains('active')) {
-            toggleSidebar();
-        }
+        toggleSidebar();
     }
+}
+
     // --- Profile Editing Logic (All Roles) ---
     function editName() {
     const nameElement = document.getElementById('user-display-name');
@@ -825,6 +851,48 @@ async function addOrUpdateTeacher(btn) {
         await fetch(`/api/teacher/students/${id}`, { method: 'DELETE' });
         loadClassStudents();
     }
+
+    // --- ADD TO SCRIPT TAG ---
+
+// Function to create a new class
+async function createClass() {
+    const className = document.getElementById('new-class-name').value.trim();
+    if (!className) return alert("Enter class name");
+
+    const res = await fetch('/api/admin/classes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ className })
+    });
+    
+    const result = await res.json();
+    alert(result.message);
+    if (result.success) {
+        document.getElementById('new-class-name').value = '';
+        loadClassDropdown(); // Refresh dropdown
+    }
+}
+
+// Function to load classes into the attendance dropdown
+async function loadClassDropdown() {
+    const select = document.getElementById('att-class-select');
+    const res = await fetch('/api/classes');
+    const classes = await res.json();
+    
+    // Keep the first option
+    select.innerHTML = '<option value="">Select Class</option>';
+    
+    classes.forEach(c => {
+        const option = document.createElement('option');
+        option.value = c.className;
+        option.innerText = c.className;
+        select.appendChild(option);
+    });
+}
+
+// --- CALL THIS FUNCTION WHEN ATTENDANCE SECTION LOADS ---
+// Inside showSection function, add:
+// if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
 
     // --- SETTINGS LOGIC ---
     function clearAppData() {
