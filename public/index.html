@@ -361,10 +361,6 @@
     // --------------------------------------
     // Safe attendance date initialization
         setTimeout(() => {
-    const dateInput = document.getElementById('att-date-select');
-    if (dateInput) {
-        dateInput.valueAsDate = new Date();
-    }}, 100);
 
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
@@ -820,9 +816,16 @@ async function transferStudents() {
     }
 
     async function markAttendance(studentId, status) {
-        const date = document.getElementById('att-date-select').value;
-        await fetch('/api/attendance/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ studentId, date, status, classId }) });
-        loadClassAttendance();
+    const date = document.getElementById('att-date-select').value;
+    const classId = document.getElementById('att-class-select').value;
+
+    await fetch('/api/attendance/update', { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({ studentId, date, status, classId }) 
+    });
+
+    loadClassAttendance();
     }
 
     async function loadStudentAttendanceView(studentId) {
