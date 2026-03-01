@@ -208,29 +208,29 @@
         
 
     
-    <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
-        <div id="announcements" class="section-panel active-panel">
-            <div class="card p-4 text-center">
-                <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
-                <h5 class="fw-bold">Welcome back!</h5>
-                <p class="text-muted small">Access your class materials and fee records securely. Try swiping from the left edge!</p>
-            </div>
+<div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
+    <div id="announcements" class="section-panel active-panel">
+        <div class="card p-4 text-center">
+            <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
+            <h5 class="fw-bold">Welcome back!</h5>
+            <p class="text-muted small">Access your class materials and fee records securely. Try swiping from the left edge!</p>
         </div>
+    </div>
         
-        <div id="settings" class="section-panel">
-            <h3 class="fw-bold mb-4">⚙️ Settings</h3>
-            <div class="card p-3">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <span>Enable Notifications</span>
-                    <input type="checkbox" id="notif-toggle" checked>
-                </div>
-                <hr>
-                <button class="btn btn-danger w-100" onclick="clearAppData()">Clear App Cache</button>
-                <p class="small text-muted mt-2">Removes locally cached data.</p>
+<div id="settings" class="section-panel">
+        <h3 class="fw-bold mb-4">⚙️ Settings</h3>
+        <div class="card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span>Enable Notifications</span>
+                <input type="checkbox" id="notif-toggle" checked>
             </div>
+            <hr>
+            <button class="btn btn-danger w-100" onclick="clearAppData()">Clear App Cache</button>
+            <p class="small text-muted mt-2">Removes locally cached data.</p>
         </div>
+    </div>
 
-        <div id="admin-teachers" class="section-panel">
+<div id="admin-teachers" class="section-panel">
     <h3 class="fw-bold mb-4">🏫 Admin Panel</h3>
     
     <div class="card p-3 mb-4">
@@ -241,7 +241,7 @@
         </div>
     </div>
 
-    <div class="card p-3 mb-4">
+<div class="card p-3 mb-4">
         <h6>Bulk Student Transfer</h6>
         <div class="row g-2">
             <div class="col-5"><input type="text" id="transfer-from" class="form-control" placeholder="From Class"></div>
@@ -249,7 +249,7 @@
             <div class="col-2"><button class="btn btn-warning w-100" onclick="transferStudents()">Transfer</button></div>
         </div>
     </div>
-    <div class="card p-3 mb-4">
+<div class="card p-3 mb-4">
         <h6>Add/Update Teacher</h6>
         <div class="row g-2">
             <div class="col-6"><input type="text" id="t-name" class="form-control" placeholder="Full Name"></div>
@@ -260,9 +260,9 @@
         <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateTeacher(this)">Save Teacher</button>
     </div>
     
-    <div id="teacher-list">Loading teachers...</div>
+<div id="teacher-list">Loading teachers...</div>
 
-    <div id="class-management-list" class="mt-4">
+<div id="class-management-list" class="mt-4">
         <h6>Manage Classes</h6>
         <div id="classes-list-container">Loading classes...</div>
     </div>
@@ -270,9 +270,9 @@
         <div id="student-directory" class="section-panel">
     <h3 class="fw-bold mb-4">📖 Student Directory</h3>
     <div id="student-directory-container">Loading student data...</div>
-    </div>
+</div>
 
-        <div id="staff-students" class="section-panel">
+<div id="staff-students" class="section-panel">
             <h3 class="fw-bold mb-4">🎓 Manage Students</h3>
             <div class="card p-3 mb-4">
                 <h6>Add New Student</h6>
@@ -292,9 +292,9 @@
             </div>
         </div>
 
-        <div id="attendance" class="section-panel">
-            <h3 class="fw-bold mb-4">📊 Attendance</h3>
-            <div id="teacher-attendance-controls" class="card p-3 mb-4" style="display:none;">
+<div id="attendance" class="section-panel">
+        <h3 class="fw-bold mb-4">📊 Attendance</h3>
+    <div id="teacher-attendance-controls" class="card p-3 mb-4" style="display:none;">
                 <div class="row g-2">
                 <div class="col-6">
                 <select id="att-class-select" class="form-select" onchange="loadClassAttendance()">
@@ -317,7 +317,7 @@
     </div>
 </div>
 
-        <div id="fees" class="section-panel">
+<div id="fees" class="section-panel">
             <h3 class="fw-bold mb-4">💳 Fees</h3>
             <div id="fee-admin-controls" class="card p-3 mb-4" style="display:none;">
                 <h6>Update Student Fees</h6>
@@ -330,7 +330,7 @@
             <div id="fee-content">Loading fee details...</div>
         </div>
 
-        <div id="study-material" class="section-panel">
+<div id="study-material" class="section-panel">
             <h3 class="fw-bold mb-4">📚 Materials</h3>
             <div id="material-upload-form" class="card p-3 mb-4" style="display:none;">
                 <h6>Post New Material</h6>
@@ -345,7 +345,7 @@
         </div>
     </div>
 
-    <div class="bottom-nav">
+<div class="bottom-nav">
         <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">
             <i class="fas fa-home"></i>Home
         </div>
