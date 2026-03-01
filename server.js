@@ -7,6 +7,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // --- MONGODB CLOUD SETUP ---
+// Ensure this URI is correct and your IP is whitelisted in MongoDB Atlas
 const uri = "mongodb+srv://ADMIN:Testing123@cluster0.52yyau2.mongodb.net/?appName=Cluster0";
 const client = new MongoClient(uri);
 
@@ -22,11 +23,10 @@ async function connectToDatabase() {
 }
 connectToDatabase();
 
-// --- FIX: Serve index.html on root route ---
+// --- Serve index.html on root route ---
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
-// ----------------------------------------------
 
 // --- API ROUTES ---
 
@@ -45,21 +45,34 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// --- NEW ROLE-BASED ROUTES ---
+// --- UPDATED ROLE-BASED ROUTES (UPSERT) ---
 
-// A. Add Teacher Route (Admin Only)
-app.post('/api/admin/teachers', async (req, res) => {
+// A. Add/Update Teacher Route (Admin Only)
+app.post('/api/admin/teachers/upsert', async (req, res) => {
     try {
-        const { password, ...userData } = req.body;
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await db.collection('users').insertOne({
-            ...userData,
-            role: "teacher", // --- Explicitly set role
-            password: hashedPassword
-        });
-        res.json({ success: true });
+        const { id, password, name, classId } = req.body;
+        
+        // Hash password only if it's provided
+        let updateData = { name, classId, role: "teacher" };
+        if (password && password.trim() !== "") {
+            updateData.password = await bcrypt.hash(password, 10);
+        }
+
+        // --- UPSERT LOGIC ---
+        const result = await db.collection('users').updateOne(
+            { studentId: id, role: "teacher" },
+            { $set: updateData },
+            { upsert: true } // Create if doesn't exist, update if it does
+        );
+
+        if (result.upsertedCount > 0) {
+            res.json({ success: true, message: "Teacher created successfully" });
+        } else {
+            res.json({ success: true, message: "Teacher updated successfully" });
+        }
     } catch (e) {
-        res.status(500).json({ success: false });
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
     }
 });
 
@@ -73,19 +86,35 @@ app.delete('/api/admin/teachers/:id', async (req, res) => {
     }
 });
 
-// C. Add Student Route (Teacher Only)
-app.post('/api/teacher/students', async (req, res) => {
+// C. Add/Update Student Route (Teacher Only)
+app.post('/api/teacher/students/upsert', async (req, res) => {
     try {
-        const { password, ...userData } = req.body;
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await db.collection('users').insertOne({
-            ...userData,
-            role: "student", // --- Explicitly set role
-            password: hashedPassword
-        });
-        res.json({ success: true });
+        const { id, password, name, classId, totalFees } = req.body;
+        
+        // Hash password only if it's provided
+        let updateData = { name, classId, totalFees, role: "student" };
+        if (password && password.trim() !== "") {
+            updateData.password = await bcrypt.hash(password, 10);
+        }
+        
+        // Initialize feesPaid if creating a new user
+        updateData.$setOnInsert = { feesPaid: 0 };
+
+        // --- UPSERT LOGIC ---
+        const result = await db.collection('users').updateOne(
+            { studentId: id, role: "student" },
+            { $set: updateData },
+            { upsert: true }
+        );
+
+        if (result.upsertedCount > 0) {
+            res.json({ success: true, message: "Student created successfully" });
+        } else {
+            res.json({ success: true, message: "Student updated successfully" });
+        }
     } catch (e) {
-        res.status(500).json({ success: false });
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
     }
 });
 
@@ -99,7 +128,7 @@ app.delete('/api/teacher/students/:id', async (req, res) => {
     }
 });
 
-// --- EXISTING ROUTES ---
+// --- EXISTING ROUTES (Maintained) ---
 
 // 3. Get students by class
 app.get('/api/students/class/:classId', async (req, res) => {
@@ -108,6 +137,16 @@ app.get('/api/students/class/:classId', async (req, res) => {
         res.json(students);
     } catch (e) {
         res.status(500).json({ error: "Database error" });
+    }
+});
+
+// Get all teachers
+app.get('/api/teachers', async (req, res) => {
+    try {
+        const teachers = await db.collection('users').find({ role: "teacher" }).toArray();
+        res.json(teachers);
+    } catch (e) {
+        res.status(500).json([]);
     }
 });
 
