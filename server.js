@@ -294,6 +294,93 @@ app.get('/api/classes', async (req, res) => {
     }
 });
 
+// --- ADD TO API ROUTES IN server.js ---
+
+// 15. Delete a class (Admin Only)
+app.delete('/api/admin/classes/delete/:className', async (req, res) => {
+    try {
+        const className = req.params.className;
+        await db.collection('classes').deleteOne({ className });
+        
+        // Optional: Also remove this classId from all students
+        await db.collection('users').updateMany(
+            { classId: className },
+            { $set: { classId: "" } }
+        );
+        
+        res.json({ success: true, message: "Class deleted successfully" });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// --- ADD TO API ROUTES IN server.js ---
+
+// 16. Transfer all students from one class to another (Admin Only)
+app.post('/api/admin/transfer-class', async (req, res) => {
+    try {
+        const { fromClass, toClass } = req.body;
+        
+        // Update all students belonging to fromClass
+        const result = await db.collection('users').updateMany(
+            { classId: fromClass, role: "student" },
+            { $set: { classId: toClass } }
+        );
+        
+        res.json({ 
+            success: true, 
+            message: `Successfully transferred ${result.modifiedCount} students from ${fromClass} to ${toClass}` 
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// 17. Get all users arranged classwise (Admin Only)
+app.get('/api/admin/users-classwise', async (req, res) => {
+    try {
+        // Aggregate users and group them by classId
+        const data = await db.collection('users').aggregate([
+            { $match: { role: { $ne: "admin" } } }, // Exclude admins
+            { $sort: { classId: 1, name: 1 } },
+            {
+                $group: {
+                    _id: "$classId",
+                    users: { $push: { name: "$name", studentId: "$studentId", role: "$role" } }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]).toArray();
+        
+        res.json(data);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+// --- ADD TO API ROUTES IN server.js ---
+
+// 18. Get student list based on role (Admin sees all, Teachers see assigned class)
+app.post('/api/teacher/students/list', async (req, res) => {
+    try {
+        const { role, classId } = req.body;
+        let query = { role: "student" };
+
+        // Teachers can only see students in their class
+        if (role === "teacher") {
+            query.classId = classId;
+        }
+
+        const students = await db.collection('users').find(query).sort({ classId: 1, name: 1 }).toArray();
+        res.json(students);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
