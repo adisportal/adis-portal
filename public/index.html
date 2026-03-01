@@ -125,244 +125,242 @@
     </style>
 </head>
 <body>
-<div id="splash-screen">
-    <div class="loader"></div>
-    <h3>ADIS Portal</h3>
-    <p>Loading application...</p>
-</div>
-
-<div id="login-page">
-    <div class="login-card text-center">
-        <img src="https://img.icons8.com/fluency/96/graduation-cap.png" width="70">
-        <div class="school-title">ASHWAMEDH DREAM INTERNATIONAL SCHOOL</div>
-        <input type="text" id="username" class="form-control mb-3" placeholder="User ID">
-        <input type="password" id="password" class="form-control mb-4" placeholder="Password">
-        <button class="btn btn-primary w-100 py-3 fw-bold" id="loginBtn" onclick="handleLogin()">LOGIN</button>
-        <p id="login-error" class="text-danger mt-3 small"></p>
-    </div>
-</div>
-
-<div id="main-app" style="display:none;">
-    <div class="top-bar shadow-sm">
-        <div onclick="toggleSidebar()" style="padding: 5px;">
-            <i class="fas fa-bars fs-4 menu-icon" id="menuIcon"></i>
-        </div>
-        <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
-        <i class="fas fa-search fs-5 text-muted" style="cursor:pointer;"></i>
+    <div id="splash-screen">
+        <div class="loader"></div>
+        <h3>ADIS Portal</h3>
+        <p>Loading application...</p>
     </div>
 
-    <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
-    <div class="sidebar" id="sidebar">
-    <div class="profile-section" id="profileToggle">
-    <div class="profile-img-container">
-        <div class="profile-img" id="user-avatar">
-            <i class="fas fa-user"></i>
-        </div>
-        <label for="photo-upload" class="edit-icon">
-            <i class="fas fa-camera"></i>
-            <input type="file" id="photo-upload" accept="image/*" style="display:none;" onchange="updateProfilePhoto(this)">
-        </label>
-    </div>
-    
-    <div class="editable-field">
-        <h5 class="fw-bold mb-1" id="user-display-name"></h5>
-        <i class="fas fa-edit edit-btn" onclick="editName()"></i>
-    </div>
-    
-    <span class="role-badge" id="user-display-role"></span>
-    
-    <div class="profile-details" id="profileDetails">
-        <p class="small mb-1"><strong>Class:</strong> <span id="user-display-class">N/A</span></p>
-        <p class="small mb-1"><strong>ID:</strong> <span id="user-display-id">N/A</span></p>
-    </div>
-    
-    </div>
-        
-        <div id="nav-menu">
-    <div class="nav-link" onclick="showSection('announcements', 'Home')">
-        <i class="fas fa-home me-3"></i> Home
-    </div>                
-    
-    <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('student-directory', 'Student Directory')">
-        <i class="fas fa-address-book me-3"></i> Student Directory
-    </div>
-
-    <div class="nav-link" data-role="admin" style="display:none;" onclick="showSection('admin-teachers', 'Admin Panel')">
-        <i class="fas fa-chalkboard-teacher me-3"></i> Admin Panel
-    </div>                
-
-    <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage Students')">
-        <i class="fas fa-user-graduate me-3"></i> Manage Students
-    </div>                
-
-    <div class="nav-link" onclick="showSection('settings', 'Settings')">
-        <i class="fas fa-cog me-3"></i> Settings
-    </div>                
-
-    <div class="nav-link" onclick="logout()">
-        <i class="fas fa-sign-out-alt me-3"></i> Logout
-    </div>                
-</div>
-
-
-        
-
-    
-<div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
-    <div id="announcements" class="section-panel active-panel">
-        <div class="card p-4 text-center">
-            <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
-            <h5 class="fw-bold">Welcome back!</h5>
-            <p class="text-muted small">Access your class materials and fee records securely. Try swiping from the left edge!</p>
+    <div id="login-page">
+        <div class="login-card text-center">
+            <img src="https://img.icons8.com/fluency/96/graduation-cap.png" width="70">
+            <div class="school-title">ASHWAMEDH DREAM INTERNATIONAL SCHOOL</div>
+            <input type="text" id="username" class="form-control mb-3" placeholder="User ID">
+            <input type="password" id="password" class="form-control mb-4" placeholder="Password">
+            <button class="btn btn-primary w-100 py-3 fw-bold" id="loginBtn" onclick="handleLogin()">LOGIN</button>
+            <p id="login-error" class="text-danger mt-3 small"></p>
         </div>
     </div>
-        
-<div id="settings" class="section-panel">
-        <h3 class="fw-bold mb-4">⚙️ Settings</h3>
-        <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <span>Enable Notifications</span>
-                <input type="checkbox" id="notif-toggle" checked>
+
+    <div id="main-app" style="display:none;">
+        <div class="top-bar shadow-sm">
+            <div onclick="toggleSidebar()" style="padding: 5px;">
+                <i class="fas fa-bars fs-4 menu-icon" id="menuIcon"></i>
             </div>
-            <hr>
-            <button class="btn btn-danger w-100" onclick="clearAppData()">Clear App Cache</button>
-            <p class="small text-muted mt-2">Removes locally cached data.</p>
+            <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
+            <i class="fas fa-search fs-5 text-muted" style="cursor:pointer;"></i>
         </div>
-    </div>
 
-<div id="admin-teachers" class="section-panel">
-    <h3 class="fw-bold mb-4">🏫 Admin Panel</h3>
-    
-    <div class="card p-3 mb-4">
-        <h6>Create New Class</h6>
-        <div class="row g-2">
-            <div class="col-8"><input type="text" id="new-class-name" class="form-control" placeholder="Class Name (e.g. 10A)"></div>
-            <div class="col-4"><button class="btn btn-success w-100" onclick="createClass()">Add</button></div>
-        </div>
-    </div>
-
-<div class="card p-3 mb-4">
-        <h6>Bulk Student Transfer</h6>
-        <div class="row g-2">
-            <div class="col-5"><input type="text" id="transfer-from" class="form-control" placeholder="From Class"></div>
-            <div class="col-5"><input type="text" id="transfer-to" class="form-control" placeholder="To Class"></div>
-            <div class="col-2"><button class="btn btn-warning w-100" onclick="transferStudents()">Transfer</button></div>
-        </div>
-    </div>
-<div class="card p-3 mb-4">
-        <h6>Add/Update Teacher</h6>
-        <div class="row g-2">
-            <div class="col-6"><input type="text" id="t-name" class="form-control" placeholder="Full Name"></div>
-            <div class="col-6"><input type="text" id="t-id" class="form-control" placeholder="Teacher ID"></div>
-            <div class="col-6"><input type="password" id="t-pass" class="form-control" placeholder="Password"></div>
-            <div class="col-6"><input type="text" id="t-class" class="form-control" placeholder="Class Teacher (e.g. 10A)"></div>
-        </div>
-        <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateTeacher(this)">Save Teacher</button>
-    </div>
-    
-<div id="teacher-list">Loading teachers...</div>
-
-<div id="class-management-list" class="mt-4">
-        <h6>Manage Classes</h6>
-        <div id="classes-list-container">Loading classes...</div>
-    </div>
-    </div>
-        <div id="student-directory" class="section-panel">
-    <h3 class="fw-bold mb-4">📖 Student Directory</h3>
-    <div id="student-directory-container">Loading student data...</div>
-</div>
-
-<div id="staff-students" class="section-panel">
-            <h3 class="fw-bold mb-4">🎓 Manage Students</h3>
-            <div class="card p-3 mb-4">
-                <h6>Add New Student</h6>
-                <div class="row g-2">
-                    <div class="col-6"><input type="text" id="s-name" class="form-control" placeholder="Full Name"></div>
-                    <div class="col-6"><input type="text" id="s-id" class="form-control" placeholder="Student ID"></div>
-                    <div class="col-6"><input type="password" id="s-pass" class="form-control" placeholder="Password"></div>
-                    <div class="col-6"><input type="text" id="s-class" class="form-control" placeholder="Class (e.g. 10A)"></div>
-                    <div class="col-12"><input type="number" id="s-fees" class="form-control" placeholder="Total Fees"></div>
+        <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="profile-section" id="profileToggle">
+                <div class="profile-img-container">
+                    <div class="profile-img" id="user-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <label for="photo-upload" class="edit-icon">
+                        <i class="fas fa-camera"></i>
+                        <input type="file" id="photo-upload" accept="image/*" style="display:none;" onchange="updateProfilePhoto(this)">
+                    </label>
                 </div>
-                <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateStudent(this)">Save Student</button>
-            </div>
-            <div class="card p-3 mb-4">
-                <h6>Manage Existing Students</h6>
-                <input type="text" id="search-class" class="form-control mb-2" placeholder="Enter Class (e.g. 10A)" onkeyup="loadClassStudents()">
-                <div id="student-list-mgmt"></div>
-            </div>
-        </div>
-
-<div id="attendance" class="section-panel">
-        <h3 class="fw-bold mb-4">📊 Attendance</h3>
-    <div id="teacher-attendance-controls" class="card p-3 mb-4" style="display:none;">
-                <div class="row g-2">
-                <div class="col-6">
-                <select id="att-class-select" class="form-select" onchange="loadClassAttendance()">
-                <option value="">Select Class</option>
-            </select>
-            </div>
-            <div class="col-6"><input type="date" id="att-date-select" class="form-control" onchange="loadClassAttendance()"></div>
-        </div>
-            <div id="class-student-list" class="mt-3"></div>
-    </div>
-            <div id="student-attendance-view" style="display:none;">
-                <div class="card p-3 text-center">
-                <h5>Overall Attendance</h5>
-            <div class="progress" style="height: 25px;">
-                <div id="att-progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" >0%</div>
-            </div>
-            <small id="att-stats" class="text-muted"></small>
-        </div>
-        <div id="student-attendance-list"></div>
-    </div>
-</div>
-
-<div id="fees" class="section-panel">
-            <h3 class="fw-bold mb-4">💳 Fees</h3>
-            <div id="fee-admin-controls" class="card p-3 mb-4" style="display:none;">
-                <h6>Update Student Fees</h6>
-                <div class="row g-2">
-                    <div class="col-6"><input type="text" id="fee-sid" class="form-control" placeholder="Student ID"></div>
-                    <div class="col-6"><input type="number" id="fee-paid" class="form-control" placeholder="Amount Paid"></div>
+                
+                <div class="editable-field">
+                    <h5 class="fw-bold mb-1" id="user-display-name"></h5>
+                    <i class="fas fa-edit edit-btn" onclick="editName()"></i>
                 </div>
-                <button class="btn btn-primary mt-2" onclick="submitFeeUpdate(this)">Update Fee Record</button>
-            </div>
-            <div id="fee-content">Loading fee details...</div>
-        </div>
-
-<div id="study-material" class="section-panel">
-            <h3 class="fw-bold mb-4">📚 Materials</h3>
-            <div id="material-upload-form" class="card p-3 mb-4" style="display:none;">
-                <h6>Post New Material</h6>
-                <div class="row g-2">
-                    <div class="col-6"><input type="text" id="mat-title" class="form-control" placeholder="Title"></div>
-                    <div class="col-6"><input type="text" id="mat-class" class="form-control" placeholder="Class (e.g. 10A)"></div>
-                    <div class="col-12"><input type="url" id="mat-link" class="form-control" placeholder="URL Link"></div>
+                
+                <span class="role-badge" id="user-display-role"></span>
+                
+                <div class="profile-details" id="profileDetails">
+                    <p class="small mb-1"><strong>Class:</strong> <span id="user-display-class">N/A</span></p>
+                    <p class="small mb-1"><strong>ID:</strong> <span id="user-display-id">N/A</span></p>
                 </div>
-                <button class="btn btn-success mt-2 w-100" onclick="uploadMaterial(this)">Upload Material</button>
             </div>
-            <div id="material-list">Loading materials...</div>
-        </div>
-    </div>
+            
+            <div id="nav-menu">
+                <div class="nav-link" onclick="showSection('announcements', 'Home')">
+                    <i class="fas fa-home me-3"></i> Home
+                </div>                
+                
+                <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('student-directory', 'Student Directory')">
+                    <i class="fas fa-address-book me-3"></i> Student Directory
+                </div>
 
-<div class="bottom-nav">
-        <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">
-            <i class="fas fa-home"></i>Home
+                <div class="nav-link" data-role="admin" style="display:none;" onclick="showSection('admin-teachers', 'Admin Panel')">
+                    <i class="fas fa-chalkboard-teacher me-3"></i> Admin Panel
+                </div>                
+
+                <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage Students')">
+                    <i class="fas fa-user-graduate me-3"></i> Manage Students
+                </div>                
+
+                <div class="nav-link" onclick="showSection('settings', 'Settings')">
+                    <i class="fas fa-cog me-3"></i> Settings
+                </div>                
+
+                <div class="nav-link" onclick="logout()">
+                    <i class="fas fa-sign-out-alt me-3"></i> Logout
+                </div>                
+            </div>
         </div>
-        <div class="nav-item role-admin-teacher" id="nav-manage" style="display:none;" onclick="showSection('staff-students', 'Manage')">
-            <i class="fas fa-users-cog"></i>Manage
-        </div>
-        <div class="nav-item" id="nav-att" onclick="showSection('attendance', 'Attendance')">
-            <i class="fas fa-user-check"></i>Attendance
-        </div>
-        <div class="nav-item" id="nav-fees" onclick="showSection('fees', 'Fees')">
-            <i class="fas fa-credit-card"></i>Fees
-        </div>
-        <div class="nav-item" id="nav-mat" onclick="showSection('study-material', 'Materials')">
-            <i class="fas fa-book"></i>Materials
+
+        <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
+            <div id="announcements" class="section-panel active-panel">
+                <div class="card p-4 text-center">
+                    <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
+                    <h5 class="fw-bold">Welcome back!</h5>
+                    <p class="text-muted small">Access your class materials and fee records securely. Try swiping from the left edge!</p>
+                </div>
+            </div>
+                
+            <div id="settings" class="section-panel">
+                <h3 class="fw-bold mb-4">⚙️ Settings</h3>
+                <div class="card p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span>Enable Notifications</span>
+                        <input type="checkbox" id="notif-toggle" checked>
+                    </div>
+                    <hr>
+                    <button class="btn btn-danger w-100" onclick="clearAppData()">Clear App Cache</button>
+                    <p class="small text-muted mt-2">Removes locally cached data.</p>
+                </div>
+            </div>
+
+            <div id="admin-teachers" class="section-panel">
+                <h3 class="fw-bold mb-4">🏫 Admin Panel</h3>
+                
+                <div class="card p-3 mb-4">
+                    <h6>Create New Class</h6>
+                    <div class="row g-2">
+                        <div class="col-8"><input type="text" id="new-class-name" class="form-control" placeholder="Class Name (e.g. 10A)"></div>
+                        <div class="col-4"><button class="btn btn-success w-100" onclick="createClass()">Add</button></div>
+                    </div>
+                </div>
+
+                <div class="card p-3 mb-4">
+                    <h6>Bulk Student Transfer</h6>
+                    <div class="row g-2">
+                        <div class="col-5"><input type="text" id="transfer-from" class="form-control" placeholder="From Class"></div>
+                        <div class="col-5"><input type="text" id="transfer-to" class="form-control" placeholder="To Class"></div>
+                        <div class="col-2"><button class="btn btn-warning w-100" onclick="transferStudents()">Transfer</button></div>
+                    </div>
+                </div>
+
+                <div class="card p-3 mb-4">
+                    <h6>Add/Update Teacher</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><input type="text" id="t-name" class="form-control" placeholder="Full Name"></div>
+                        <div class="col-6"><input type="text" id="t-id" class="form-control" placeholder="Teacher ID"></div>
+                        <div class="col-6"><input type="password" id="t-pass" class="form-control" placeholder="Password"></div>
+                        <div class="col-6"><input type="text" id="t-class" class="form-control" placeholder="Class Teacher (e.g. 10A)"></div>
+                    </div>
+                    <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateTeacher(this)">Save Teacher</button>
+                </div>
+                
+                <div id="teacher-list">Loading teachers...</div>
+
+                <div id="class-management-list" class="mt-4">
+                    <h6>Manage Classes</h6>
+                    <div id="classes-list-container">Loading classes...</div>
+                </div>
+            </div>
+
+            <div id="student-directory" class="section-panel">
+                <h3 class="fw-bold mb-4">📖 Student Directory</h3>
+                <div id="student-directory-container">Loading student data...</div>
+            </div>
+
+            <div id="staff-students" class="section-panel">
+                <h3 class="fw-bold mb-4">🎓 Manage Students</h3>
+                <div class="card p-3 mb-4">
+                    <h6>Add New Student</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><input type="text" id="s-name" class="form-control" placeholder="Full Name"></div>
+                        <div class="col-6"><input type="text" id="s-id" class="form-control" placeholder="Student ID"></div>
+                        <div class="col-6"><input type="password" id="s-pass" class="form-control" placeholder="Password"></div>
+                        <div class="col-6"><input type="text" id="s-class" class="form-control" placeholder="Class (e.g. 10A)"></div>
+                        <div class="col-12"><input type="number" id="s-fees" class="form-control" placeholder="Total Fees"></div>
+                    </div>
+                    <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateStudent(this)">Save Student</button>
+                </div>
+                <div class="card p-3 mb-4">
+                    <h6>Manage Existing Students</h6>
+                    <input type="text" id="search-class" class="form-control mb-2" placeholder="Enter Class (e.g. 10A)" onkeyup="loadClassStudents()">
+                    <div id="student-list-mgmt"></div>
+                </div>
+            </div>
+
+            <div id="attendance" class="section-panel">
+                <h3 class="fw-bold mb-4">📊 Attendance</h3>
+                <div id="teacher-attendance-controls" class="card p-3 mb-4" style="display:none;">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <select id="att-class-select" class="form-select" onchange="loadClassAttendance()">
+                                <option value="">Select Class</option>
+                            </select>
+                        </div>
+                        <div class="col-6"><input type="date" id="att-date-select" class="form-control" onchange="loadClassAttendance()"></div>
+                    </div>
+                    <div id="class-student-list" class="mt-3"></div>
+                </div>
+                <div id="student-attendance-view" style="display:none;">
+                    <div class="card p-3 text-center">
+                        <h5>Overall Attendance</h5>
+                        <div class="progress" style="height: 25px;">
+                            <div id="att-progress-bar" class="progress-bar" role="progressbar" style="width: 0%;" >0%</div>
+                        </div>
+                        <small id="att-stats" class="text-muted"></small>
+                    </div>
+                    <div id="student-attendance-list"></div>
+                </div>
+            </div>
+
+            <div id="fees" class="section-panel">
+                <h3 class="fw-bold mb-4">💳 Fees</h3>
+                <div id="fee-admin-controls" class="card p-3 mb-4" style="display:none;">
+                    <h6>Update Student Fees</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><input type="text" id="fee-sid" class="form-control" placeholder="Student ID"></div>
+                        <div class="col-6"><input type="number" id="fee-paid" class="form-control" placeholder="Amount Paid"></div>
+                    </div>
+                    <button class="btn btn-primary mt-2" onclick="submitFeeUpdate(this)">Update Fee Record</button>
+                </div>
+                <div id="fee-content">Loading fee details...</div>
+            </div>
+
+            <div id="study-material" class="section-panel">
+                <h3 class="fw-bold mb-4">📚 Materials</h3>
+                <div id="material-upload-form" class="card p-3 mb-4" style="display:none;">
+                    <h6>Post New Material</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><input type="text" id="mat-title" class="form-control" placeholder="Title"></div>
+                        <div class="col-6"><input type="text" id="mat-class" class="form-control" placeholder="Class (e.g. 10A)"></div>
+                        <div class="col-12"><input type="url" id="mat-link" class="form-control" placeholder="URL Link"></div>
+                    </div>
+                    <button class="btn btn-success mt-2 w-100" onclick="uploadMaterial(this)">Upload Material</button>
+                </div>
+                <div id="material-list">Loading materials...</div>
+            </div>
+        </div> <div class="bottom-nav">
+            <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">
+                <i class="fas fa-home"></i>Home
+            </div>
+            <div class="nav-item role-admin-teacher" id="nav-manage" style="display:none;" onclick="showSection('staff-students', 'Manage')">
+                <i class="fas fa-users-cog"></i>Manage
+            </div>
+            <div class="nav-item" id="nav-att" onclick="showSection('attendance', 'Attendance')">
+                <i class="fas fa-user-check"></i>Attendance
+            </div>
+            <div class="nav-item" id="nav-fees" onclick="showSection('fees', 'Fees')">
+                <i class="fas fa-credit-card"></i>Fees
+            </div>
+            <div class="nav-item" id="nav-mat" onclick="showSection('study-material', 'Materials')">
+                <i class="fas fa-book"></i>Materials
+            </div>
         </div>
     </div>
-</div>
+</body>
+
 
 <script>
     // --- Global State & Init ---
@@ -383,7 +381,7 @@ window.onload = function() {
             document.getElementById('login-page').style.display = 'flex';
         }
     } else {
-        document.getElementById('login-page').style.display = 'flex';
+        doge').style.display = 'flex';
     }
 };
 
