@@ -266,6 +266,35 @@ app.get('/api/materials/:classId', async (req, res) => {
     }
 });
 
+// 13. Create a new class (Admin Only)
+app.post('/api/admin/classes/create', async (req, res) => {
+    try {
+        const { className } = req.body;
+        // Check if class already exists
+        const existingClass = await db.collection('classes').findOne({ className });
+        if (existingClass) {
+            return res.status(400).json({ success: false, message: "Class already exists" });
+        }
+        
+        await db.collection('classes').insertOne({ className, createdAt: new Date() });
+        res.json({ success: true, message: "Class created successfully" });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// 14. Get all classes
+app.get('/api/classes', async (req, res) => {
+    try {
+        const classes = await db.collection('classes').find().toArray();
+        res.json(classes);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
