@@ -91,32 +91,42 @@ app.post('/api/teacher/students/upsert', async (req, res) => {
     try {
         const { id, password, name, classId, totalFees } = req.body;
         
-        // Hash password only if it's provided
-        let updateData = { name, classId, totalFees, role: "student" };
+        // 1. Data to update for both new and existing students
+        let updateData = { 
+            name: name,
+            classId: classId,
+            totalFees: totalFees,
+            role: "student" 
+        };
+
+        // 2. Hash password only if it's provided and not empty
         if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
-        
-        // Initialize feesPaid if creating a new user
-        updateData.$setOnInsert = { feesPaid: 0 };
 
         // --- UPSERT LOGIC ---
         const result = await db.collection('users').updateOne(
             { studentId: id, role: "student" },
-            { $set: updateData },
+            { 
+                $set: updateData,
+                $setOnInsert: { feesPaid: 0 } // Initialize only if creating
+            },
             { upsert: true }
         );
 
         if (result.upsertedCount > 0) {
             res.json({ success: true, message: "Student created successfully" });
-        } else {
+        } else if (result.modifiedCount > 0 || result.matchedCount > 0) {
             res.json({ success: true, message: "Student updated successfully" });
+        } else {
+            res.status(400).json({ success: false, message: "No changes made" });
         }
     } catch (e) {
         console.error(e);
-        res.status(500).json({ success: false, message: "Database error" });
+        res.status(500).json({ success: false, message: "Database error: " + e.message });
     }
 });
+
 
 // D. Delete Student Route (Teacher Only)
 app.delete('/api/teacher/students/:id', async (req, res) => {
