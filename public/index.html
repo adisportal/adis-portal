@@ -181,13 +181,17 @@
 
 
         <div id="nav-menu">
-            <div class="nav-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>
-            <div class="nav-link role-admin" style="display:none;" onclick="showSection('admin-teachers', 'Manage Teachers')"><i class="fas fa-chalkboard-teacher me-3"></i> Manage Teachers</div>
-            <div class="nav-link role-staff" style="display:none;" onclick="showSection('staff-students', 'Manage Students')"><i class="fas fa-user-graduate me-3"></i> Manage Students</div>
-            <div class="nav-link" onclick="showSection('settings', 'Settings')"><i class="fas fa-cog me-3"></i> Settings</div>
-            <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>
-        </div>
+    <div class="nav-link" onclick="showSection('announcements', 'Home')"><i class="fas fa-home me-3"></i> Home</div>                
+    
+    <div class="nav-link role-admin role-teacher" style="display:none;" onclick="showSection('student-directory', 'Student Directory')">
+        <i class="fas fa-address-book me-3"></i> Student Directory
     </div>
+    <div class="nav-link role-admin" style="display:none;" onclick="showSection('admin-teachers', 'Admin Panel')"><i class="fas fa-chalkboard-teacher me-3"></i> Admin Panel</div>                
+    <div class="nav-link role-staff" style="display:none;" onclick="showSection('staff-students', 'Manage Students')"><i class="fas fa-user-graduate me-3"></i> Manage Students</div>                
+    <div class="nav-link" onclick="showSection('settings', 'Settings')"><i class="fas fa-cog me-3"></i> Settings</div>                
+    <div class="nav-link" onclick="logout()"><i class="fas fa-sign-out-alt me-3"></i> Logout</div>                
+</div>
+
     
     <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
         <div id="announcements" class="section-panel active-panel">
@@ -212,14 +216,47 @@
         </div>
 
         <div id="admin-teachers" class="section-panel">
-            <h3 class="fw-bold mb-4">🏫 Admin Panel</h3>
-            <div class="card p-3 mb-4">
-            <h6>Create New Class</h6>
-            <div class="row g-2">
+    <h3 class="fw-bold mb-4">🏫 Admin Panel</h3>
+    
+    <div class="card p-3 mb-4">
+        <h6>Create New Class</h6>
+        <div class="row g-2">
             <div class="col-8"><input type="text" id="new-class-name" class="form-control" placeholder="Class Name (e.g. 10A)"></div>
             <div class="col-4"><button class="btn btn-success w-100" onclick="createClass()">Add</button></div>
         </div>
     </div>
+
+    <div class="card p-3 mb-4">
+        <h6>Bulk Student Transfer</h6>
+        <div class="row g-2">
+            <div class="col-5"><input type="text" id="transfer-from" class="form-control" placeholder="From Class"></div>
+            <div class="col-5"><input type="text" id="transfer-to" class="form-control" placeholder="To Class"></div>
+            <div class="col-2"><button class="btn btn-warning w-100" onclick="transferStudents()">Transfer</button></div>
+        </div>
+    </div>
+    <div class="card p-3 mb-4">
+        <h6>Add/Update Teacher</h6>
+        <div class="row g-2">
+            <div class="col-6"><input type="text" id="t-name" class="form-control" placeholder="Full Name"></div>
+            <div class="col-6"><input type="text" id="t-id" class="form-control" placeholder="Teacher ID"></div>
+            <div class="col-6"><input type="password" id="t-pass" class="form-control" placeholder="Password"></div>
+            <div class="col-6"><input type="text" id="t-class" class="form-control" placeholder="Class Teacher (e.g. 10A)"></div>
+        </div>
+        <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateTeacher(this)">Save Teacher</button>
+    </div>
+    
+    <div id="teacher-list">Loading teachers...</div>
+
+    <div id="class-management-list" class="mt-4">
+        <h6>Manage Classes</h6>
+        <div id="classes-list-container">Loading classes...</div>
+    </div>
+    </div>
+        <div id="student-directory" class="section-panel">
+    <h3 class="fw-bold mb-4">📖 Student Directory</h3>
+    <div id="student-directory-container">Loading student data...</div>
+    </div>
+
             
     <div class="card p-3 mb-4">
         <h6>Add/Update Teacher</h6>
@@ -515,32 +552,38 @@ if (splash) {
     }
 
     function showSection(id, title) {
-        document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
-        const panel = document.getElementById(id);
-        if(panel) panel.classList.add('active-panel');
-        document.getElementById('header-title').innerText = title;
+    document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
+    const panel = document.getElementById(id);
+    if(panel) panel.classList.add('active-panel');
+    document.getElementById('header-title').innerText = title;
     
-    // Update Bottom Nav active state
-        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
     
-    // --- UPDATED: Call dropdown loader when attendance section is shown ---
-        if (id === 'attendance') {
-            loadClassDropdown(); // <--- ADDED THIS LINE
-            loadAttendanceSection();
+    // --- UPDATED LOADERS ---
+    if (id === 'attendance') {
+        loadClassDropdown();
+        loadAttendanceSection();
     }
-    // ----------------------------------------------------------------------
     
-    // Data Loading for other sections
-        if (id === 'fees') loadFees();
-        if (id === 'study-material') loadMaterials();
-        if (id === 'admin-teachers') loadTeachers();
-        if (id === 'staff-students') loadClassStudents();
+    if (id === 'admin-teachers') {
+        loadTeachers();                
+        loadClassesForManagement(); // <--- ADD THIS
+    }
+
+    if (id === 'student-directory') {
+        loadStudentDirectoryClasswise(); // <--- ADD THIS
+    }
+    // ----------------------
     
-    // Hide sidebar if open
-        if(document.getElementById('sidebar').classList.contains('active')) {
+    if (id === 'fees') loadFees();
+    if (id === 'study-material') loadMaterials();
+    if (id === 'staff-students') loadClassStudents();
+    
+    if(document.getElementById('sidebar').classList.contains('active')) {
         toggleSidebar();
     }
 }
+
 
     // --- Profile Editing Logic (All Roles) ---
     function editName() {
@@ -692,6 +735,110 @@ if (splash) {
                 </div>
             </div>
         `).join('');
+    }
+    // --- NEW FUNCTIONS FOR CLASSES ---
+
+async function loadClassesForManagement() {
+    const container = document.getElementById('classes-list-container');
+    container.innerHTML = "Loading...";
+
+    try {
+        const res = await fetch('/api/classes');
+        const classes = await res.json();
+        
+        if (classes.length === 0) {
+            container.innerHTML = "No classes found.";
+            return;
+        }
+
+        container.innerHTML = classes.map(c => `
+            <div class="card p-2 mb-2 d-flex justify-content-between align-items-center">
+                <span><strong>${c.className}</strong></span>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteClass('${c.className}')">Delete</button>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = "Error loading classes.";
+    }
+}
+
+async function deleteClass(className) {
+    if (!confirm(`Are you sure you want to delete ${className}?`)) return;
+
+    const res = await fetch(`/api/admin/classes/delete/${className}`, {
+        method: 'DELETE'
+    });
+    
+    const result = await res.json();
+    alert(result.message);
+    if (result.success) {
+        loadClassesForManagement(); // Refresh the list
+    }
+}
+
+async function transferStudents() {
+    const fromClass = document.getElementById('transfer-from').value.trim();
+    const toClass = document.getElementById('transfer-to').value.trim();
+    
+    if (!fromClass || !toClass) return alert("Enter both classes");
+    if (!confirm(`Move all students from ${fromClass} to ${toClass}?`)) return;
+
+    const res = await fetch('/api/admin/transfer-class', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ fromClass, toClass })
+    });
+    
+    const result = await res.json();
+    alert(result.message);
+}
+
+// --- NEW FUNCTION FOR STUDENT DIRECTORY (ROLE-BASED) ---
+
+    async function loadStudentDirectoryClasswise() {
+        const container = document.getElementById('student-directory-container');
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        container.innerHTML = "Loading...";
+
+    try {
+        // --- SECURITY LOGIC ---
+        // We pass user info to the backend to filter
+        const res = await fetch('/api/teacher/students/list', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ role: user.role, classId: user.classId })
+        });
+        const students = await res.json();
+        
+        if (students.length === 0) {
+            container.innerHTML = "No students found.";
+            return;
+        }
+
+        // Grouping data by class for display
+        const grouped = students.reduce((acc, student) => {
+            const cls = student.classId || "Unassigned";
+            if (!acc[cls]) acc[cls] = [];
+            acc[cls].push(student);
+            return acc;
+        }, {});
+
+        container.innerHTML = Object.keys(grouped).sort().map(className => `
+            <div class="card p-3 mb-3">
+                <h5 class="fw-bold text-primary mb-3">Class: ${className}</h5>
+                ${grouped[className].map(s => `
+                    <div class="d-flex justify-content-between border-bottom py-1">
+                        <span>${s.name}</span>
+                        <small class="text-muted">ID: ${s.studentId}</small>
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
+
+    } catch (e) {
+        container.innerHTML = "Error loading directory.";
+        console.error(e);
+    }
     }
 
     async function markAttendance(studentId, status) {
