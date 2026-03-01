@@ -294,19 +294,26 @@ app.get('/api/classes', async (req, res) => {
     }
 });
 
-// --- ADD TO API ROUTES IN server.js ---
-
-// 15. Delete a class (Admin Only)
+// 15. Delete a class (Admin Only) - MODIFIED FOR SAFETY
 app.delete('/api/admin/classes/delete/:className', async (req, res) => {
     try {
         const className = req.params.className;
-        await db.collection('classes').deleteOne({ className });
         
-        // Optional: Also remove this classId from all students
-        await db.collection('users').updateMany(
-            { classId: className },
-            { $set: { classId: "" } }
-        );
+        // 🛡️ CHECK: Are there students still in this class?
+        const studentsInClass = await db.collection('users').countDocuments({ 
+            classId: className, 
+            role: "student" 
+        });
+
+        if (studentsInClass > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Cannot delete class. There are still ${studentsInClass} students in ${className}. Please transfer them first.` 
+            });
+        }
+        
+        // If no students, delete the class
+        await db.collection('classes').deleteOne({ className });
         
         res.json({ success: true, message: "Class deleted successfully" });
     } catch (e) {
@@ -314,6 +321,7 @@ app.delete('/api/admin/classes/delete/:className', async (req, res) => {
         res.status(500).json({ success: false, message: "Database error" });
     }
 });
+
 
 // --- ADD TO API ROUTES IN server.js ---
 
