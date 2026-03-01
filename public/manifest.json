@@ -3,14 +3,9 @@
   "name": "Ashwamedh Dream International School",
   "icons": [
     {
-      "src": "https://img.icons8.com/fluency/96/graduation-cap.png",
+      "src": "icon1.png", 
       "type": "image/png",
-      "sizes": "96x96"
-    },
-    {
-      "src": "https://img.icons8.com/fluency/144/graduation-cap.png",
-      "type": "image/png",
-      "sizes": "144x144"
+      "sizes": "512x512"
     }
   ],
   "start_url": "/",
