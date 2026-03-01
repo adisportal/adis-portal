@@ -26,17 +26,15 @@
             --card-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
 
-        /* Added touch-action for better mobile scrolling */
         body { background-color: var(--light-bg); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; touch-action: pan-y; }
 
-        /* --- ADD THIS TO YOUR CSS --- */
         #splash-screen {
             position: fixed;
             top: 0;
             left: 0;
             width: 100vw;
             height: 100vh;
-            background-color: #0e1c36; /* Match your app theme */
+            background-color: #0e1c36; 
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -59,16 +57,13 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Login Page Styling */
         #login-page { height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at top right, #1a2a3a, #0e1c36); padding: 20px; }
         .login-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); width: 100%; max-width: 450px; }
         .school-title { font-size: 1.1rem; font-weight: 800; color: var(--dark-blue); margin: 15px 0; line-height: 1.4; text-transform: uppercase; }
         
-        /* App Layout */
         #main-app { display: none; }
         .top-bar { background: white; padding: 15px 20px; border-bottom: 1px solid #e3e6f0; position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; }
         
-        /* Sidebar Styling - Updated Transition and Z-Index */
         .sidebar { 
             position: fixed; 
             left: -320px; 
@@ -77,7 +72,6 @@
             width: 280px; 
             background: white; 
             color: var(--dark-blue); 
-            /* Smoother transition */
             transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
             z-index: 2000; 
             padding: 20px; 
@@ -86,11 +80,9 @@
         }
         .sidebar.active { left: 0; }
         
-        /* Overlay - Updated Z-Index */
         .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); z-index: 1500; backdrop-filter: blur(2px); }
         .sidebar-overlay.active { display: block; }
         
-        /* Profile Section in Sidebar */
         .profile-section { background: var(--light-bg); padding: 20px; border-radius: 16px; margin-bottom: 20px; text-align: center; border: 1px solid #eee; }
         .profile-img-container { position: relative; width: 80px; height: 80px; margin: 0 auto 10px; }
         .profile-img { width: 100%; height: 100%; background: white; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:var(--primary-blue); border: 2px solid #e3e6f0; object-fit: cover; overflow: hidden; }
@@ -99,11 +91,9 @@
         .edit-btn { cursor: pointer; color: var(--primary-blue); font-size: 0.9rem; }
         .profile-details { margin-top: 15px; border-top: 1px solid #e3e6f0; padding-top: 15px; text-align: left; }
 
-        /* Navigation Links (Sidebar) */
         .nav-link { color: #555; cursor: pointer; margin-bottom: 5px; padding: 12px 15px; border-radius: 12px; text-decoration: none; display: flex; align-items: center; transition: 0.2s; font-weight: 500;}
         .nav-link:hover { background: #f0f4ff; color: var(--primary-blue); }
         
-        /* Content Area */
         .content-area { max-width: 800px; margin: 20px auto; padding: 0 15px; padding-bottom: 100px; }
         .section-panel { display: none; animation: slideUp 0.3s ease-out; }
         .active-panel { display: block; }
@@ -111,16 +101,12 @@
         
         @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* Bottom Navigation Bar */
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; height: 70px; background: white; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #e3e6f0; z-index: 999; padding-bottom: 5px; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
         .nav-item { text-align: center; color: #6c757d; cursor: pointer; font-size: 0.75rem; flex: 1; transition: 0.2s; }
         .nav-item.active { color: var(--primary-blue); font-weight: 600; }
         .nav-item i { font-size: 1.3rem; margin-bottom: 4px; display: block; }
         
-        /* Icon Styling */
         .menu-icon { transition: transform 0.3s ease; display: inline-block; cursor: pointer; color: var(--dark-blue); }
-        
-        /* Utility */
         .role-badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,0.05); color: var(--primary-blue); font-weight: bold;}
     </style>
 </head>
@@ -359,199 +345,175 @@
             </div>
         </div>
     </div>
-</body>
-
 
 <script>
-    // --- Global State & Init ---
-let touchStartX = 0; 
-let touchEndX = 0;
+    let touchStartX = 0; 
+    let touchEndX = 0;
 
-window.onload = function() {
-    const splash = document.getElementById('splash-screen');                
-    if (splash) splash.style.display = 'none';
+    window.onload = function() {
+        const splash = document.getElementById('splash-screen');                
+        if (splash) splash.style.display = 'none';
 
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-        try {
-            const user = JSON.parse(savedUser);
-            activateApp(user);
-        } catch (e) {
-            console.error("Storage parsing error", e);                
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+            try {
+                const user = JSON.parse(savedUser);
+                activateApp(user);
+            } catch (e) {
+                console.error("Storage parsing error", e);                
+                document.getElementById('login-page').style.display = 'flex';
+            }
+        } else {
+            // FIXED: Typo was 'doge'
             document.getElementById('login-page').style.display = 'flex';
         }
-    } else {
-        doge').style.display = 'flex';
-    }
-};
-
-// --- Authentication & App Activation ---
-async function handleLogin() {
-    const id = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value.trim();
-    const btn = document.getElementById('loginBtn');
-    if(!id || !password) return alert("Please fill all fields");
-
-    btn.innerText = "Authenticating..."; btn.disabled = true;
-
-    try {
-        const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, password })
-        });
-        const result = await res.json();
-        if (result.success) {
-            localStorage.setItem('currentUser', JSON.stringify(result.user));
-            activateApp(result.user);
-        } else {
-            alert("Login Failed: " + result.message);
-        }
-    } catch (e) { alert("Server Error"); }
-    btn.innerText = "LOGIN"; btn.disabled = false;
-}
-
-function activateApp(user) {
-    document.getElementById('login-page').style.display = 'none';
-    document.getElementById('main-app').style.display = 'block';
-
-    document.getElementById('user-display-name').innerText = user.name;
-    document.getElementById('user-display-role').innerText = user.role.toUpperCase();
-    document.getElementById('user-display-class').innerText = user.classId || 'N/A';
-    document.getElementById('user-display-id').innerText = user.id;
-     
-    setupNav(user.role);
-    loadDashboardBasedOnRole(user.role);
-
-    const savedPhoto = localStorage.getItem('userPhoto');
-    if (savedPhoto) document.getElementById('user-avatar').innerHTML = `<img src="${savedPhoto}" style="width:100%;height:100%;object-fit:cover;">`;
-}
-
-function logout() {
-    localStorage.removeItem('currentUser');
-    location.reload();
-}
-
-// --- Navigation & Role Control ---
-function setupNav(role) {
-    // 1. Sidebar Links (using data-role)
-    const navLinks = document.querySelectorAll('#nav-menu [data-role]');
-    navLinks.forEach(link => {
-        const allowedRoles = link.getAttribute('data-role').split(',');
-        link.style.display = allowedRoles.includes(role) ? 'flex' : 'none';
-    });
-
-    // 2. Bottom Nav "Manage" icon visibility
-    const bottomManage = document.getElementById('nav-manage');
-    if (bottomManage) {
-        bottomManage.style.display = (role === 'admin' || role === 'teacher') ? 'block' : 'none';
-    }
-}
-
-function loadDashboardBasedOnRole(role) {
-    if(role === 'admin') showSection('admin-teachers', 'Admin Panel');
-    else if(role === 'teacher') showSection('staff-students', 'Manage Students');
-    else showSection('announcements', 'Home');
-}
-
-function showSection(id, title) {
-    // Hide all panels
-    document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
-    
-    // Show selected panel
-    const panel = document.getElementById(id);
-    if(panel) panel.classList.add('active-panel');
-    
-    document.getElementById('header-title').innerText = title;
-    
-    // Highlight Bottom Nav
-    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    // Match logic: if id is 'announcements', highlight 'nav-home'
-    const navMap = { 
-    'announcements': 'nav-home', 
-    'staff-students': 'nav-manage', 
-    'admin-teachers': 'nav-manage', // Add this line
-    'attendance': 'nav-att', 
-    'fees': 'nav-fees', 
-    'study-material': 'nav-mat' 
     };
 
-    if(navMap[id]) document.getElementById(navMap[id]).classList.add('active');
+    async function handleLogin() {
+        const id = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value.trim();
+        const btn = document.getElementById('loginBtn');
+        if(!id || !password) return alert("Please fill all fields");
 
-    // Trigger Data Loaders
-    if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
-    if (id === 'admin-teachers') { loadTeachers(); loadClassesForManagement(); }
-    if (id === 'student-directory') loadStudentDirectoryClasswise();
-    if (id === 'fees') loadFees();
-    if (id === 'study-material') loadMaterials();
-    if (id === 'staff-students') loadClassStudents();
-    
-    // Close sidebar if open
-    if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
-}
+        btn.innerText = "Authenticating..."; btn.disabled = true;
 
-// --- UI Interaction ---
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('overlay');
-    const menuIcon = document.getElementById('menuIcon');
-
-    sidebar.classList.toggle('active');
-    overlay.classList.toggle('active');
-    
-    if (sidebar.classList.contains('active')) {
-        menuIcon.classList.replace('fa-bars', 'fa-times');
-    } else {
-        menuIcon.classList.replace('fa-times', 'fa-bars');
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, password })
+            });
+            const result = await res.json();
+            if (result.success) {
+                localStorage.setItem('currentUser', JSON.stringify(result.user));
+                activateApp(result.user);
+            } else {
+                alert("Login Failed: " + result.message);
+            }
+        } catch (e) { alert("Server Error"); }
+        btn.innerText = "LOGIN"; btn.disabled = false;
     }
-}
 
-function hideSidebarOnCenterClick() {
-    if (document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
-}
+    function activateApp(user) {
+        document.getElementById('login-page').style.display = 'none';
+        document.getElementById('main-app').style.display = 'block';
 
-// Swipe detection
-document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
-document.addEventListener('touchend', e => { 
-    touchEndX = e.changedTouches[0].screenX;
-    if (touchEndX - touchStartX > 100 && touchStartX < 50) toggleSidebar(); 
-    if (touchStartX - touchEndX > 100 && document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
-}, {passive: true});
+        document.getElementById('user-display-name').innerText = user.name;
+        document.getElementById('user-display-role').innerText = user.role.toUpperCase();
+        document.getElementById('user-display-class').innerText = user.classId || 'N/A';
+        document.getElementById('user-display-id').innerText = user.id;
+        
+        setupNav(user.role);
+        loadDashboardBasedOnRole(user.role);
 
-// --- Profile Features ---
-function editName() {
-    const nameElement = document.getElementById('user-display-name');
-    const newName = prompt("Enter new name:", nameElement.innerText);
-    if (newName) {
-        nameElement.innerText = newName;
-        let user = JSON.parse(localStorage.getItem('currentUser'));
-        user.name = newName;
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        fetch('/api/user/update-name', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: user.id, name: newName}) });
+        const savedPhoto = localStorage.getItem('userPhoto');
+        if (savedPhoto) document.getElementById('user-avatar').innerHTML = `<img src="${savedPhoto}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`;
     }
-}
 
-function updateProfilePhoto(input) {
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = e => {
-            document.getElementById('user-avatar').innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
-            localStorage.setItem('userPhoto', e.target.result);
+    function logout() {
+        localStorage.removeItem('currentUser');
+        location.reload();
+    }
+
+    function setupNav(role) {
+        const navLinks = document.querySelectorAll('#nav-menu [data-role]');
+        navLinks.forEach(link => {
+            const allowedRoles = link.getAttribute('data-role').split(',');
+            link.style.display = allowedRoles.includes(role) ? 'flex' : 'none';
+        });
+
+        const bottomManage = document.getElementById('nav-manage');
+        if (bottomManage) {
+            bottomManage.style.display = (role === 'admin' || role === 'teacher') ? 'block' : 'none';
+        }
+    }
+
+    function loadDashboardBasedOnRole(role) {
+        if(role === 'admin') showSection('admin-teachers', 'Admin Panel');
+        else if(role === 'teacher') showSection('staff-students', 'Manage Students');
+        else showSection('announcements', 'Home');
+    }
+
+    function showSection(id, title) {
+        document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active-panel'));
+        
+        const panel = document.getElementById(id);
+        if(panel) panel.classList.add('active-panel');
+        
+        document.getElementById('header-title').innerText = title;
+        
+        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+        
+        const navMap = { 
+            'announcements': 'nav-home', 
+            'staff-students': 'nav-manage', 
+            'admin-teachers': 'nav-manage', 
+            'attendance': 'nav-att', 
+            'fees': 'nav-fees', 
+            'study-material': 'nav-mat' 
         };
-        reader.readAsDataURL(input.files[0]);
+
+        if(navMap[id]) document.getElementById(navMap[id]).classList.add('active');
+
+        if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
+        if (id === 'admin-teachers') { loadTeachers(); loadClassesForManagement(); }
+        if (id === 'student-directory') loadStudentDirectoryClasswise();
+        if (id === 'fees') loadFees();
+        if (id === 'study-material') loadMaterials();
+        if (id === 'staff-students') loadClassStudents();
+        
+        if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
-}
 
-// --- API Data Loading Functions (Keep your existing versions of these below) ---
-// loadMaterials(), uploadMaterial(), submitFeeUpdate(), loadFees(), 
-// loadAttendanceSection(), loadClassAttendance(), loadClassesForManagement(), 
-// deleteClass(), transferStudents(), loadStudentDirectoryClasswise(), 
-// markAttendance(), loadStudentAttendanceView(), addOrUpdateTeacher(), 
-// loadTeachers(), addOrUpdateStudent(), loadClassStudents(), 
-// deleteStudent(), createClass(), loadClassDropdown(), clearAppData()
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        const menuIcon = document.getElementById('menuIcon');
 
-    
-    // --- Role-Based Data Loading ---
+        sidebar.classList.toggle('active');
+        overlay.classList.toggle('active');
+        
+        if (sidebar.classList.contains('active')) {
+            menuIcon.classList.replace('fa-bars', 'fa-times');
+        } else {
+            menuIcon.classList.replace('fa-times', 'fa-bars');
+        }
+    }
+
+    function hideSidebarOnCenterClick() {
+        if (document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
+    }
+
+    document.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
+    document.addEventListener('touchend', e => { 
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchEndX - touchStartX > 100 && touchStartX < 50) toggleSidebar(); 
+        if (touchStartX - touchEndX > 100 && document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
+    }, {passive: true});
+
+    function editName() {
+        const nameElement = document.getElementById('user-display-name');
+        const newName = prompt("Enter new name:", nameElement.innerText);
+        if (newName) {
+            nameElement.innerText = newName;
+            let user = JSON.parse(localStorage.getItem('currentUser'));
+            user.name = newName;
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            fetch('/api/user/update-name', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: user.id, name: newName}) });
+        }
+    }
+
+    function updateProfilePhoto(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById('user-avatar').innerHTML = `<img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`;
+                localStorage.setItem('userPhoto', e.target.result);
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
     async function loadMaterials() {
         const user = JSON.parse(localStorage.getItem('currentUser'));
         const list = document.getElementById('material-list');
@@ -567,7 +529,7 @@ function updateProfilePhoto(input) {
                             <h6 class="mb-0 fw-bold">${m.title}</h6>
                             <small class="text-muted">${new Date(m.date).toLocaleDateString()}</small>
                         </div>
-                        <a href="${m.link}" target="_blank" class="button small">Open</a>
+                        <a href="${m.link}" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
                     </div>
                 </div>`).join('') || "No materials found.";
         } catch (e) { list.innerHTML = "Error."; }
@@ -654,124 +616,116 @@ function updateProfilePhoto(input) {
             </div>
         `).join('');
     }
-    // --- NEW FUNCTIONS FOR CLASSES ---
 
-async function loadClassesForManagement() {
-    const container = document.getElementById('classes-list-container');
-    container.innerHTML = "Loading...";
+    async function loadClassesForManagement() {
+        const container = document.getElementById('classes-list-container');
+        container.innerHTML = "Loading...";
 
-    try {
-        const res = await fetch('/api/classes');
-        const classes = await res.json();
-        
-        if (classes.length === 0) {
-            container.innerHTML = "No classes found.";
-            return;
+        try {
+            const res = await fetch('/api/classes');
+            const classes = await res.json();
+            
+            if (classes.length === 0) {
+                container.innerHTML = "No classes found.";
+                return;
+            }
+
+            container.innerHTML = classes.map(c => `
+                <div class="card p-2 mb-2 d-flex justify-content-between align-items-center">
+                    <span><strong>${c.className}</strong></span>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteClass('${c.className}')">Delete</button>
+                </div>
+            `).join('');
+        } catch (e) {
+            container.innerHTML = "Error loading classes.";
         }
-
-        container.innerHTML = classes.map(c => `
-            <div class="card p-2 mb-2 d-flex justify-content-between align-items-center">
-                <span><strong>${c.className}</strong></span>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteClass('${c.className}')">Delete</button>
-            </div>
-        `).join('');
-    } catch (e) {
-        container.innerHTML = "Error loading classes.";
     }
-}
 
-async function deleteClass(className) {
-    if (!confirm(`Are you sure you want to delete ${className}?`)) return;
+    async function deleteClass(className) {
+        if (!confirm(`Are you sure you want to delete ${className}?`)) return;
 
-    const res = await fetch(`/api/admin/classes/delete/${className}`, {
-        method: 'DELETE'
-    });
-    
-    const result = await res.json();
-    alert(result.message);
-    if (result.success) {
-        loadClassesForManagement(); // Refresh the list
+        const res = await fetch(`/api/admin/classes/delete/${className}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await res.json();
+        alert(result.message);
+        if (result.success) {
+            loadClassesForManagement();
+        }
     }
-}
 
-async function transferStudents() {
-    const fromClass = document.getElementById('transfer-from').value.trim();
-    const toClass = document.getElementById('transfer-to').value.trim();
-    
-    if (!fromClass || !toClass) return alert("Enter both classes");
-    if (!confirm(`Move all students from ${fromClass} to ${toClass}?`)) return;
+    async function transferStudents() {
+        const fromClass = document.getElementById('transfer-from').value.trim();
+        const toClass = document.getElementById('transfer-to').value.trim();
+        
+        if (!fromClass || !toClass) return alert("Enter both classes");
+        if (!confirm(`Move all students from ${fromClass} to ${toClass}?`)) return;
 
-    const res = await fetch('/api/admin/transfer-class', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ fromClass, toClass })
-    });
-    
-    const result = await res.json();
-    alert(result.message);
-}
-
-// --- NEW FUNCTION FOR STUDENT DIRECTORY (ROLE-BASED) ---
+        const res = await fetch('/api/admin/transfer-class', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ fromClass, toClass })
+        });
+        
+        const result = await res.json();
+        alert(result.message);
+    }
 
     async function loadStudentDirectoryClasswise() {
         const container = document.getElementById('student-directory-container');
         const user = JSON.parse(localStorage.getItem('currentUser'));
         container.innerHTML = "Loading...";
 
-    try {
-        // --- SECURITY LOGIC ---
-        // We pass user info to the backend to filter
-        const res = await fetch('/api/teacher/students/list', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ role: user.role, classId: user.classId })
-        });
-        const students = await res.json();
-        
-        if (students.length === 0) {
-            container.innerHTML = "No students found.";
-            return;
+        try {
+            const res = await fetch('/api/teacher/students/list', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ role: user.role, classId: user.classId })
+            });
+            const students = await res.json();
+            
+            if (students.length === 0) {
+                container.innerHTML = "No students found.";
+                return;
+            }
+
+            const grouped = students.reduce((acc, student) => {
+                const cls = student.classId || "Unassigned";
+                if (!acc[cls]) acc[cls] = [];
+                acc[cls].push(student);
+                return acc;
+            }, {});
+
+            container.innerHTML = Object.keys(grouped).sort().map(className => `
+                <div class="card p-3 mb-3">
+                    <h5 class="fw-bold text-primary mb-3">Class: ${className}</h5>
+                    ${grouped[className].map(s => `
+                        <div class="d-flex justify-content-between border-bottom py-1">
+                            <span>${s.name}</span>
+                            <small class="text-muted">ID: ${s.studentId}</small>
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+
+        } catch (e) {
+            container.innerHTML = "Error loading directory.";
         }
-
-        // Grouping data by class for display
-        const grouped = students.reduce((acc, student) => {
-            const cls = student.classId || "Unassigned";
-            if (!acc[cls]) acc[cls] = [];
-            acc[cls].push(student);
-            return acc;
-        }, {});
-
-        container.innerHTML = Object.keys(grouped).sort().map(className => `
-            <div class="card p-3 mb-3">
-                <h5 class="fw-bold text-primary mb-3">Class: ${className}</h5>
-                ${grouped[className].map(s => `
-                    <div class="d-flex justify-content-between border-bottom py-1">
-                        <span>${s.name}</span>
-                        <small class="text-muted">ID: ${s.studentId}</small>
-                    </div>
-                `).join('')}
-            </div>
-        `).join('');
-
-    } catch (e) {
-        container.innerHTML = "Error loading directory.";
-        console.error(e);
-    }
     }
 
     async function markAttendance(studentId, status) {
         const date = document.getElementById('att-date-select').value;
         const classId = document.getElementById('att-class-select').value;
 
-    await fetch('/api/attendance/update', { 
-        method: 'POST', 
-        headers: {'Content-Type': 'application/json'}, 
-        body: JSON.stringify({ studentId, date, status, classId }) 
-    });
+        await fetch('/api/attendance/update', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({ studentId, date, status, classId }) 
+        });
 
-    loadClassAttendance(); // Now it refreshes with the new data
-}
-
+        loadClassAttendance();
+    }
 
     async function loadStudentAttendanceView(studentId) {
         const res = await fetch(`/api/student/attendance/${studentId}`);
@@ -792,116 +746,97 @@ async function transferStudents() {
             </div>
         `).join('') || "No records.";
     }
-    // --- Updated Management Functions ---
 
-async function addOrUpdateTeacher(btn) {
-    const data = {
-        name: document.getElementById('t-name').value,
-        id: document.getElementById('t-id').value, 
-        password: document.getElementById('t-pass').value,
-        classId: document.getElementById('t-class').value
-    };
-    
-    // Validation
-    if(!data.id || !data.name) { 
-        alert("Teacher ID and Name are required"); 
-        return; 
-    }
-    
-    btn.disabled = true;
-    btn.innerText = "Saving...";
-
-    try {
-        // --- REAL API CALL ---
-        const res = await fetch('/api/admin/teachers/upsert', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
+    async function addOrUpdateTeacher(btn) {
+        const data = {
+            name: document.getElementById('t-name').value,
+            id: document.getElementById('t-id').value, 
+            password: document.getElementById('t-pass').value,
+            classId: document.getElementById('t-class').value
+        };
         
-        const result = await res.json();
-        
-        if (result.success) {
-            alert(result.message); // Will say "Created" or "Updated"
-            loadTeachers(); // Refresh the list
-        } else {
-            alert("Error: " + result.message);
+        if(!data.id || !data.name) { 
+            alert("Teacher ID and Name are required"); 
+            return; 
         }
-    } catch (error) {
-        alert("API Connection Error. Please try again.");
-        console.error(error);
-    } finally {
-        btn.disabled = false;
-        btn.innerText = "Save Teacher";
+        
+        btn.disabled = true;
+        btn.innerText = "Saving...";
+
+        try {
+            const res = await fetch('/api/admin/teachers/upsert', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) loadTeachers();
+        } catch (error) {
+            alert("API Connection Error. Please try again.");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Save Teacher";
+        }
     }
-}
+
     async function loadTeachers() {
-    const list = document.getElementById('teacher-list');
-    list.innerHTML = "Fetching...";
-    
-    try {
-        // --- REAL API CALL ---
-        const res = await fetch('/api/teachers');
-        const data = await res.json();
+        const list = document.getElementById('teacher-list');
+        list.innerHTML = "Fetching...";
         
-        if (data.length > 0) {
-            list.innerHTML = data.map(t => `
-                <div class="card p-2 mb-2 d-flex justify-content-between align-items-center">
-                    <span><strong>${t.name}</strong> (${t.id}) - Class: ${t.classId}</span>
-                </div>
-            `).join('');
-        } else {
-            list.innerHTML = `<div class="card p-2 text-center">No teachers found.</div>`;
+        try {
+            const res = await fetch('/api/teachers');
+            const data = await res.json();
+            
+            if (data.length > 0) {
+                list.innerHTML = data.map(t => `
+                    <div class="card p-2 mb-2 d-flex justify-content-between align-items-center">
+                        <span><strong>${t.name}</strong> (${t.id}) - Class: ${t.classId}</span>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = `<div class="card p-2 text-center">No teachers found.</div>`;
+            }
+        } catch (error) {
+            list.innerHTML = `<div class="card p-2 text-center text-danger">Error loading teachers.</div>`;
         }
-    } catch (error) {
-        list.innerHTML = `<div class="card p-2 text-center text-danger">Error loading teachers.</div>`;
-        console.error(error);
     }
-}
+
     async function addOrUpdateStudent(btn) {
-    const data = {
-        name: document.getElementById('s-name').value,
-        id: document.getElementById('s-id').value, 
-        password: document.getElementById('s-pass').value,
-        classId: document.getElementById('s-class').value,
-        totalFees: parseFloat(document.getElementById('s-fees').value) || 0
-    };
-    
-    // Validation
-    if(!data.id || !data.name) { 
-        alert("Student ID and Name are required"); 
-        return; 
-    }
-
-    btn.disabled = true;
-    btn.innerText = "Saving...";
-
-    try {
-        // --- REAL API CALL ---
-        const res = await fetch('/api/teacher/students/upsert', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
+        const data = {
+            name: document.getElementById('s-name').value,
+            id: document.getElementById('s-id').value, 
+            password: document.getElementById('s-pass').value,
+            classId: document.getElementById('s-class').value,
+            totalFees: parseFloat(document.getElementById('s-fees').value) || 0
+        };
         
-        const result = await res.json();
-        
-        if (result.success) {
-            alert(result.message); // Will say "Created" or "Updated"
-            loadClassStudents(); // Refresh the list
-        } else {
-            alert("Error: " + result.message);
+        if(!data.id || !data.name) { 
+            alert("Student ID and Name are required"); 
+            return; 
         }
-    } catch (error) {
-        // --- ERROR DISPLAY ---
-        alert("API Connection Error: " + error.message);
-        console.error(error);
-        // ------------------------------
-    } finally {
-        btn.disabled = false;
-        btn.innerText = "Save Student";
+
+        btn.disabled = true;
+        btn.innerText = "Saving...";
+
+        try {
+            const res = await fetch('/api/teacher/students/upsert', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) loadClassStudents();
+        } catch (error) {
+            alert("API Connection Error: " + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Save Student";
+        }
     }
-}
 
     async function loadClassStudents() {
         const classId = document.getElementById('search-class').value;
@@ -924,52 +859,41 @@ async function addOrUpdateTeacher(btn) {
         loadClassStudents();
     }
 
-    // --- ADD TO SCRIPT TAG ---
+    async function createClass() {
+        const className = document.getElementById('new-class-name').value.trim();
+        if (!className) return alert("Enter class name");
 
-// Function to create a new class
-async function createClass() {
-    const className = document.getElementById('new-class-name').value.trim();
-    if (!className) return alert("Enter class name");
-
-    const res = await fetch('/api/admin/classes/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ className })
-    });
-    
-    const result = await res.json();
-    alert(result.message);
-    if (result.success) {
-        document.getElementById('new-class-name').value = '';
-        loadClassDropdown(); // Refresh dropdown
+        const res = await fetch('/api/admin/classes/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ className })
+        });
+        
+        const result = await res.json();
+        alert(result.message);
+        if (result.success) {
+            document.getElementById('new-class-name').value = '';
+            loadClassDropdown();
+        }
     }
-}
 
-// Function to load classes into the attendance dropdown
-async function loadClassDropdown() {
-    const select = document.getElementById('att-class-select');
-    const res = await fetch('/api/classes');
-    const classes = await res.json();
-    
-    // Keep the first option
-    select.innerHTML = '<option value="">Select Class</option>';
-    
-    classes.forEach(c => {
-        const option = document.createElement('option');
-        option.value = c.className;
-        option.innerText = c.className;
-        select.appendChild(option);
-    });
-}
+    async function loadClassDropdown() {
+        const select = document.getElementById('att-class-select');
+        const res = await fetch('/api/classes');
+        const classes = await res.json();
+        
+        select.innerHTML = '<option value="">Select Class</option>';
+        
+        classes.forEach(c => {
+            const option = document.createElement('option');
+            option.value = c.className;
+            option.innerText = c.className;
+            select.appendChild(option);
+        });
+    }
 
-// --- CALL THIS FUNCTION WHEN ATTENDANCE SECTION LOADS ---
-// Inside showSection function, add:
-// if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
-
-    // --- SETTINGS LOGIC ---
     function clearAppData() {
         if (confirm("Are you sure? This will clear local cached data.")) {
-            // Simulated cache clearing
             alert("Cache Cleared!");
         }
     }
