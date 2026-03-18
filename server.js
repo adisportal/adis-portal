@@ -8,7 +8,7 @@ app.use(express.static('public'));
 
 // --- MONGODB CLOUD SETUP ---
 // Ensure this URI is correct and your IP is whitelisted in MongoDB Atlas
-const uri = "mongodb+srv://ADMIN:Testing123@cluster0.52yyau2.mongodb.net/?appName=Cluster0";
+const uri = process.env.MONGO_URI; 
 const client = new MongoClient(uri);
 
 let db;
