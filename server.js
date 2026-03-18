@@ -1,14 +1,6 @@
 const express = require('express');
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
-const myNewPassword = "Admin@123"; // Put the password you want here
-
-bcrypt.hash(myNewPassword, 10, (err, hash) => {
-    console.log("--- GENERATED HASH KEY START ---");
-    console.log(hash);
-    console.log("--- GENERATED HASH KEY END ---");
-});
-
 const app = express();
 
 
