@@ -222,16 +222,30 @@
                 </div>                
             </div>
         </div>
-
-        <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
-            <div id="announcements" class="section-panel active-panel">
-                <div class="card p-4 text-center">
-                    <i class="fas fa-bullhorn fa-3x text-primary mb-3"></i>
-                    <h5 class="fw-bold">Welcome back!</h5>
-                    <p class="text-muted small">Access your class materials and fee records securely. Try swiping from the left edge!</p>
+    <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
+        
+        <div id="announcements" class="section-panel active-panel">
+            <div id="announcement-poster" class="card p-3 mb-4" style="display:none;">
+                <h6 class="fw-bold mb-3">📢 Post New Announcement</h6>
+                <textarea id="ann-text" class="form-control mb-3" rows="3" placeholder="Write your message..."></textarea>
+                <div class="row g-2 align-items-center">
+                    <div class="col-8">
+                        <input type="file" id="ann-image" class="form-control" accept="image/*">
+                    </div>
+                    <div class="col-4">
+                        <button class="btn btn-primary w-100 fw-bold" onclick="postAnnouncement(this)">POST</button>
+                    </div>
                 </div>
             </div>
-                
+            
+            <div id="announcement-list">
+                <div class="text-center p-5">
+                    <div class="loader" style="margin: auto; border-top-color: var(--primary-blue);"></div>
+                    <p class="mt-2 text-muted">Fetching announcements...</p>
+                </div>
+            </div>
+
+
             <div id="settings" class="section-panel">
                 <h3 class="fw-bold mb-4">⚙️ Settings</h3>
                 <div class="card p-3">
@@ -450,6 +464,7 @@
         
         setupNav(user.role);
         loadDashboardBasedOnRole(user.role);
+        loadAnnouncements(); // <--- Add this line here
 
         const savedPhoto = localStorage.getItem('userPhoto');
         if (savedPhoto) document.getElementById('user-avatar').innerHTML = `<img src="${savedPhoto}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`;
@@ -921,8 +936,7 @@
             loadClassDropdown();
         }
     }
-
-    async function loadClassDropdown() {
+        async function loadClassDropdown() {
         const select = document.getElementById('att-class-select');
         const res = await fetch('/api/classes');
         const classes = await res.json();
@@ -942,6 +956,88 @@
             alert("Cache Cleared!");
         }
     }
+
+    // --- NEW ANNOUNCEMENT FEATURES START HERE ---
+
+    async function loadAnnouncements() {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const container = document.getElementById('announcement-list');
+        const postBox = document.getElementById('announcement-poster');
+
+        if (user.role === 'admin' || user.role === 'teacher') {
+            postBox.style.display = 'block';
+        }
+
+        try {
+            const res = await fetch('/api/announcements');
+            const data = await res.json();
+            
+            if (data.length === 0) {
+                container.innerHTML = '<div class="card p-4 text-center text-muted">No announcements yet.</div>';
+                return;
+            }
+
+            container.innerHTML = data.map(ann => `
+                <div class="card mb-3 p-0 overflow-hidden">
+                    ${ann.imageUrl ? `<img src="${ann.imageUrl}" style="width:100%; max-height:300px; object-fit:cover;">` : ''}
+                    <div class="p-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <p class="mb-1">${ann.text}</p>
+                                <small class="text-muted">${new Date(ann.date).toLocaleString()}</small>
+                            </div>
+                            ${(user.role === 'admin' || user.role === 'teacher') ? `
+                                <button class="btn btn-sm btn-light" onclick="deleteAnnouncement('${ann._id}')">
+                                    <i class="fas fa-trash text-danger"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            container.innerHTML = '<div class="card p-4 text-center text-danger">Failed to load announcements.</div>';
+        }
+    }
+
+    async function postAnnouncement(btn) {
+        const text = document.getElementById('ann-text').value;
+        const fileInput = document.getElementById('ann-image');
+        
+        if (!text && !fileInput.files[0]) return alert("Please add text or an image");
+
+        btn.disabled = true;
+        btn.innerText = "Posting...";
+
+        const formData = new FormData();
+        formData.append('text', text);
+        if (fileInput.files[0]) formData.append('image', fileInput.files[0]);
+
+        try {
+            const res = await fetch('/api/announcements', {
+                method: 'POST',
+                body: formData 
+            });
+            const result = await res.json();
+            if (result.success) {
+                document.getElementById('ann-text').value = '';
+                fileInput.value = '';
+                loadAnnouncements();
+            }
+        } catch (e) {
+            alert("Upload failed");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Post";
+        }
+    }
+
+    async function deleteAnnouncement(id) {
+        if (!confirm("Delete this post?")) return;
+        await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
+        loadAnnouncements();
+    }
+    
 </script>
 </body>
 </html>
