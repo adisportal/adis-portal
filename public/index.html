@@ -222,27 +222,26 @@
                 </div>                
             </div>
         </div>
-    <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
-        
-        <div id="announcements" class="section-panel active-panel">
-            <div id="announcement-poster" class="card p-3 mb-4" style="display:none;">
-                <h6 class="fw-bold mb-3">📢 Post New Announcement</h6>
-                <textarea id="ann-text" class="form-control mb-3" rows="3" placeholder="Write your message..."></textarea>
-                <div class="row g-2 align-items-center">
-                    <div class="col-8">
-                        <input type="file" id="ann-image" class="form-control" accept="image/*">
-                    </div>
-                    <div class="col-4">
-                        <button class="btn btn-primary w-100 fw-bold" onclick="postAnnouncement(this)">POST</button>
+        <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
+            <div id="announcements" class="section-panel active-panel">
+                <div id="announcement-poster" class="card p-3 mb-4" style="display:none;">
+                    <h6 class="fw-bold mb-3">📢 Post New Announcement</h6>
+                    <textarea id="ann-text" class="form-control mb-3" rows="3" placeholder="Write your message..."></textarea>
+                    <div class="row g-2 align-items-center">
+                        <div class="col-8">
+                            <input type="file" id="ann-image" class="form-control" accept="image/*">
+                        </div>
+                        <div class="col-4">
+                            <button class="btn btn-primary w-100 fw-bold" onclick="postAnnouncement(this)">POST</button>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
             <div id="announcement-list">
                 <div class="text-center p-5">
                     <div class="loader" style="margin: auto; border-top-color: var(--primary-blue);"></div>
                     <p class="mt-2 text-muted">Fetching announcements...</p>
                 </div>
+            </div>
             </div>
 
 
