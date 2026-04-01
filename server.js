@@ -1,8 +1,8 @@
 const express = require('express');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const app = express();
-
+const PORT = process.env.PORT || 3000; // You were missing the PORT variable definition
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -24,6 +24,35 @@ async function connectToDatabase() {
 }
 connectToDatabase();
 
+let maintenanceMode = false; // Global switch
+
+// Middleware to block access during maintenance
+app.use((req, res, next) => {
+    // Allow the admin to bypass maintenance to fix things
+    if (maintenanceMode && !req.path.includes('/api/admin/maintenance') && !req.path.includes('/api/login')) {
+        return res.status(503).json({ 
+            success: false, 
+            maintenance: true, 
+            message: "ADIS Portal is under scheduled maintenance for high-level upgrades. Please check back soon!" 
+        });
+    }
+    next();
+});
+
+// Admin Route to toggle Maintenance
+app.post('/api/admin/maintenance/toggle', (req, res) => {
+    const { status } = req.body; // true or false
+    maintenanceMode = status;
+    console.log(`⚠️ Maintenance Mode: ${maintenanceMode ? 'ON' : 'OFF'}`);
+    res.json({ success: true, maintenance: maintenanceMode });
+});
+
+// Check status (for frontend)
+app.get('/api/maintenance/status', (req, res) => {
+    res.json({ maintenance: maintenanceMode });
+});
+
+
 // --- Serve index.html on root route ---
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
@@ -31,18 +60,49 @@ app.get('/', (req, res) => {
 
 // --- API ROUTES ---
 
-// 1. Login Route
+// 1. Login Route with Session Tracking for Single-Device Login
 app.post('/api/login', async (req, res) => {
     const { id, password } = req.body;
     try {
         const user = await db.collection('users').findOne({ studentId: id });
         if (user && await bcrypt.compare(password, user.password)) {
-            res.json({ success: true, user: { name: user.name, role: user.role, id: user.studentId, classId: user.classId } });
+            
+            // Create a unique Session ID
+            const newSessionId = Date.now().toString() + Math.random();
+            
+            // Save Session to DB (Kicks out other devices)
+            await db.collection('users').updateOne(
+                { studentId: id },
+                { $set: { currentSessionId: newSessionId } }
+            );
+
+            res.json({ 
+                success: true, 
+                sessionId: newSessionId,
+                user: { 
+                    name: user.name, 
+                    role: user.role, 
+                    id: user.studentId, 
+                    classId: user.classId,
+                    performance: user.performance || {} // Send performance data
+                } 
+            });
         } else {
             res.status(401).json({ success: false, message: "Invalid Credentials" });
         }
     } catch (e) {
         res.status(500).json({ success: false, message: "Server Error" });
+    }
+});
+
+// Verify Session (Single Device Guard)
+app.get('/api/verify-session', async (req, res) => {
+    const { userId, sessionId } = req.query;
+    const user = await db.collection('users').findOne({ studentId: userId });
+    if (user && user.currentSessionId === sessionId) {
+        res.json({ active: true });
+    } else {
+        res.json({ active: false });
     }
 });
 
@@ -110,7 +170,9 @@ app.post('/api/teacher/students/upsert', async (req, res) => {
             { studentId: id, role: "student" },
             { 
                 $set: updateData,
-                $setOnInsert: { feesPaid: 0 } // Initialize only if creating
+                $setOnInsert: { feesPaid: 0, performance: { academic: 0, tech: 0, arts: 0, sports: 0, practical: 0, feedback: "Welcome to ADIS!"
+                                                          }
+                              }
             },
             { upsert: true }
         );
@@ -225,24 +287,37 @@ app.get('/api/student/attendance/:studentId', async (req, res) => {
     }
 });
 
-// 9. Post a new announcement (Teacher)
+// 9. Post/Update Announcement
+
 app.post('/api/announcements', async (req, res) => {
     try {
-        const newAnnouncement = { ...req.body, date: new Date() };
-        await db.collection('announcements').insertOne(newAnnouncement);
+        const { id, title, content, sender, type } = req.body;
+        const postData = { 
+            title: title || "School Update", 
+            content: content || "", 
+            sender: sender || "ADIS Administration", 
+            type: type || "General", 
+            date: new Date() 
+        };
+
+        if (id && ObjectId.isValid(id)) {
+            await db.collection('announcements').updateOne({ _id: new ObjectId(id) }, { $set: postData });
+        } else {
+            await db.collection('announcements').insertOne(postData);
+        }
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
     }
 });
 
-// 10. Get all announcements
-app.get('/api/announcements', async (req, res) => {
+// Delete Announcement
+app.delete('/api/announcements/:id', async (req, res) => {
     try {
-        const announcements = await db.collection('announcements').find().sort({ date: -1 }).limit(10).toArray();
-        res.json(announcements);
+        await db.collection('announcements').deleteOne({ _id: new ObjectId(req.params.id) });
+        res.json({ success: true });
     } catch (e) {
-        res.status(500).json({ error: "Database error" });
+        res.status(500).json({ success: false });
     }
 });
 
@@ -254,6 +329,38 @@ app.post('/api/materials', async (req, res) => {
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
+    }
+});
+
+// --- PERFORMANCE TRACKER FEATURES ---
+
+// Update Performance (Teacher or Admin)
+app.post('/api/performance/update', async (req, res) => {
+    try {
+        const { studentId, performanceData } = req.body;
+        
+        // This updates Academics, Tech, Arts, Sports and creates the "Direct Visibility"
+        await db.collection('users').updateOne(
+            { studentId: studentId },
+            { $set: { performance: performanceData } }
+        );
+        
+        res.json({ success: true, message: "Performance updated and live for parents!" });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// Admin: Get Active Sessions (Monitor who is online)
+app.get('/api/admin/active-sessions', async (req, res) => {
+    try {
+        const activeUsers = await db.collection('users')
+            .find({ currentSessionId: { $ne: null } })
+            .project({ name: 1, studentId: 1, role: 1 })
+            .toArray();
+        res.json(activeUsers);
+    } catch (e) {
+        res.status(500).json([]);
     }
 });
 
@@ -390,9 +497,34 @@ app.post('/api/teacher/students/list', async (req, res) => {
     }
 });
 
-// --- REMOVE THE DUPLICATE BLOCK BELOW THIS LINE ---
+// Admin Overwrite: Directly edit any student's performance or info
+app.post('/api/admin/overwrite-student', async (req, res) => {
+    try {
+        const { targetId, updateFields } = req.body;
+        
+        // This allows Admin to fix Marks, Tech scores, or Names instantly
+        await db.collection('users').updateOne(
+            { studentId: targetId },
+            { $set: updateFields }
+        );
+        
+        res.json({ success: true, message: "Admin Overwrite Complete" });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
 
-const PORT = process.env.PORT || 3000;
+// Session Guard (Single Device Login)
+app.get('/api/verify-session', async (req, res) => {
+    const { userId, sessionId } = req.query;
+    const user = await db.collection('users').findOne({ studentId: userId });
+    if (user && user.currentSessionId === sessionId) {
+        res.json({ active: true });
+    } else {
+        res.json({ active: false }); // This triggers the logout on frontend
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
 });
