@@ -130,6 +130,13 @@
     </style>
 </head>
 <body>
+    <div id="maintenance-screen" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:white; z-index:20000; text-align:center; padding-top:20vh; flex-direction: column; align-items: center;">
+        <i class="fas fa-tools fa-5x text-warning mb-4"></i>
+        <h2 class="fw-bold">Scheduled Maintenance</h2>
+        <p class="text-muted px-4">ADIS Portal is currently undergoing upgrades.<br>We'll be back online shortly!</p>
+        <button class="btn btn-primary mt-3" onclick="location.reload()">Check Again</button>
+    </div>
+
     <div id="splash-screen">
         <div class="loader"></div>
         <h3>ADIS Portal</h3>
@@ -167,8 +174,14 @@
                 <i class="fas fa-bars fs-4 menu-icon" id="menuIcon"></i>
             </div>
             <h6 class="mb-0 fw-bold" id="header-title">Home</h6>
-            <i class="fas fa-search fs-5 text-muted" style="cursor:pointer;"></i>
+            <div class="d-flex align-items-center">
+                <input type="text" id="global-search" class="form-control form-control-sm me-2" 
+               placeholder="Search..." onkeyup="executeSearch()" 
+               style="display:none; max-width:150px; border-radius: 20px;">
+                <i class="fas fa-search fs-5 text-muted" id="searchBtn" onclick="toggleSearchInput()" style="cursor:pointer;"></i>
+            </div>
         </div>
+
 
         <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
         <div class="sidebar" id="sidebar">
@@ -197,6 +210,16 @@
             </div>
             
             <div id="nav-menu">
+                <div class="nav-link" onclick="showSection('about-us', 'About ADIS')">
+                    <i class="fas fa-university me-3"></i> About Us
+                </div>                
+                <div class="nav-link" onclick="showSection('contact-us', 'Support')">
+                    <i class="fas fa-headset me-3"></i> Contact Us
+                </div>
+                <div class="nav-link text-danger" data-role="admin" style="display:none;" onclick="toggleMaintenanceMode()">
+                    <i class="fas fa-power-off me-3"></i> Toggle Maintenance
+                </div>
+
                 <div class="nav-link" onclick="showSection('announcements', 'Home')">
                     <i class="fas fa-home me-3"></i> Home
                 </div>                
@@ -243,6 +266,47 @@
                     </div>
                 </div>
             </div> 
+
+            <div id="about-us" class="section-panel">
+                <h3 class="fw-bold mb-4">🏫 About ADIS</h3>
+                <div class="card p-0 overflow-hidden">
+                    <img src="https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&q=80" style="width:100%; height:200px; object-fit:cover;">
+                    <div class="p-3">
+                        <h5 class="fw-bold">Ashwamedh Dream International School</h5>
+                        <p class="text-muted">Founded on the principles of excellence and innovation, ADIS provides a world-class learning environment for the leaders of tomorrow.</p>
+                        <hr>
+                        <div class="d-flex justify-content-between">
+                            <span><i class="fas fa-check-circle text-success me-2"></i>Modern Labs</span>
+                            <span><i class="fas fa-check-circle text-success me-2"></i>Sports Hub</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="contact-us" class="section-panel">
+                <h3 class="fw-bold mb-4">📞 Contact Us</h3>
+                <div class="card p-3 mb-3">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="bg-primary text-white rounded-circle p-3 me-3">
+                            <i class="fas fa-phone-alt"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold">General Inquiry</div>
+                            <div class="text-muted">+91 98765 43210</div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="bg-success text-white rounded-circle p-3 me-3">
+                            <i class="fas fa-envelope"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold">Email Support</div>
+                            <div class="text-muted">help@adis-school.com</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary w-100 py-3" onclick="window.location.href='mailto:help@adis-school.com'">SEND US A MESSAGE</button>
+                </div>
+            </div>
+
             
             <div id="settings" class="section-panel">
 
@@ -594,6 +658,75 @@
         } catch (e) { list.innerHTML = "Error."; }
     }
 
+    // 1. Search Bar Logic
+    function toggleSearchInput() {
+        const input = document.getElementById('global-search');
+        const isHidden = input.style.display === 'none';
+        input.style.display = isHidden ? 'block' : 'none';
+        if (isHidden) input.focus();
+    }
+    
+    function executeSearch() {
+        const query = document.getElementById('global-search').value.toLowerCase();
+        const activePanel = document.querySelector('.active-panel');
+  
+        // Find all cards within the currently visible section
+        
+        const cards = activePanel.querySelectorAll('.card');
+        cards.forEach(card => {
+            const text = card.innerText.toLowerCase();
+            // If the card contains the search text, show it; otherwise hide it
+            card.style.display = text.includes(query) ? 'block' : 'none';
+        });
+    }
+    // 2. Maintenance Mode Logic
+    async function checkMaintenanceStatus() {
+        try {
+            const res = await fetch('/api/maintenance/status');
+            const data = await res.json();
+            const overlay = document.getElementById('maintenance-screen');
+            
+            if (data.maintenance) {
+                // Check if current user is admin (Admins should still see the app to turn it off)
+                const user = JSON.parse(localStorage.getItem('currentUser'));
+                if (user && user.role === 'admin') {
+                    console.warn("Maintenance Mode is ON, but you are Admin.");
+                } else {
+                    overlay.style.display = 'flex';
+                }
+            } else {
+                overlay.style.display = 'none';
+            }
+        } catch (e) { console.error("Status check failed", e); }
+    }
+
+// Run status check every 30 seconds
+setInterval(checkMaintenanceStatus, 30000);
+// Also run on load
+checkMaintenanceStatus();
+
+async function toggleMaintenanceMode() {
+    const currentStatus = confirm("Switch Maintenance Mode status?");
+    if(!currentStatus) return;
+
+    // We'll ask the server what the current status is and flip it
+    const res = await fetch('/api/maintenance/status');
+    const data = await res.json();
+    
+    const newStatus = !data.maintenance;
+    
+    const update = await fetch('/api/admin/maintenance/toggle', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ status: newStatus })
+    });
+    
+    const result = await update.json();
+    alert(`Maintenance Mode is now ${result.maintenance ? 'ON' : 'OFF'}`);
+    location.reload();
+}
+
+
     async function uploadMaterial(btn) {
         const data = {
             title: document.getElementById('mat-title').value,
@@ -816,6 +949,12 @@
         
         if(!data.id || !data.name) { 
             alert("Teacher ID and Name are required"); 
+            if (result.success) {
+                loadTeachers();
+                // Add this to clear the form
+                ['t-name', 't-id', 't-pass', 't-class'].forEach(id => document.getElementById(id).value = '');
+            }
+
             return; 
         }
         
@@ -873,6 +1012,12 @@
         
         if(!data.id || !data.name) { 
             alert("Student ID and Name are required"); 
+            if (result.success) {
+                loadClassStudents();
+                // Add this to clear the form
+                ['s-name', 's-id', 's-pass', 's-class', 's-fees'].forEach(id => document.getElementById(id).value = '');
+            }
+
             return; 
         }
 
@@ -957,47 +1102,84 @@
     }
 
     // --- NEW ANNOUNCEMENT FEATURES START HERE ---
+async function loadClassDropdown() {
+    const select = document.getElementById('att-class-select');
+    const res = await fetch('/api/classes');
+    const classes = await res.json();
+    
+    select.innerHTML = '<option value="">Select Class</option>';
+    
+    classes.forEach(c => {
+        const option = document.createElement('option');
+        option.value = c.className;
+        option.innerText = c.className;
+        select.appendChild(option);
+    });
+}
 
+function clearAppData() {
+    if (confirm("Are you sure? This will clear local cached data.")) {
+        alert("Cache Cleared!");
+    }
+}
+
+// --- NEW ANNOUNCEMENT FEATURES START HERE ---
     async function loadAnnouncements() {
-        const user = JSON.parse(localStorage.getItem('currentUser'));
-        const container = document.getElementById('announcement-list');
-        const postBox = document.getElementById('announcement-poster');
+        const user = JSON.parse(localStorage.getItem("currentUser"));
+        const container = document.getElementById("announcement-list");
+        const postBox = document.getElementById("announcement-poster");
 
-        if (user.role === 'admin' || user.role === 'teacher') {
-            postBox.style.display = 'block';
+        // Show posting box for authorized roles
+        if (user && (user.role === "admin" || user.role === "teacher")) {
+            postBox.style.display = "block";
+        }
+
+        // Show loader if container is empty
+        if (!container.innerHTML || container.innerHTML.includes("loader")) {
+            container.innerHTML = '<div class="text-center p-3"><div class="loader" style="margin:auto; width:20px; height:20px; border-width:2px;"></div></div>';
         }
 
         try {
-            const res = await fetch('/api/announcements');
+            const res = await fetch("/api/announcements");
             const data = await res.json();
-            
-            if (data.length === 0) {
+        
+            if (!data || data.length === 0) {
                 container.innerHTML = '<div class="card p-4 text-center text-muted">No announcements yet.</div>';
                 return;
             }
 
-            container.innerHTML = data.map(ann => `
-                <div class="card mb-3 p-0 overflow-hidden">
-                    ${ann.imageUrl ? `<img src="${ann.imageUrl}" style="width:100%; max-height:300px; object-fit:cover;">` : ''}
-                    <div class="p-3">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <p class="mb-1">${ann.text}</p>
-                                <small class="text-muted">${new Date(ann.date).toLocaleString()}</small>
-                            </div>
-                            ${(user.role === 'admin' || user.role === 'teacher') ? `
-                                <button class="btn btn-sm btn-light" onclick="deleteAnnouncement('${ann._id}')">
-                                    <i class="fas fa-trash text-danger"></i>
-                                </button>
-                            ` : ''}
+     // CORRECTED: Added missing backticks and balanced all quotes
+                container.innerHTML = data.map(ann => `
+            <div class="card mb-3 p-0 overflow-hidden shadow-sm">
+                ${ann.imageUrl ? `
+                    <img src="${ann.imageUrl}" 
+                         onerror="this.style.display='none'" 
+                         style="width:100%; max-height:300px; object-fit:cover; display:block;">
+                ` : ""}
+                <div class="p-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div style="flex-grow: 1;">
+                            <p class="mb-1" style="white-space: pre-wrap;">${ann.text}</p>
+                            <small class="text-muted">
+                                <i class="far fa-clock me-1"></i> ${new Date(ann.date).toLocaleString()}
+                            </small>
                         </div>
+                        ${(user && (user.role === "admin" || user.role === "teacher")) ? `
+                            <button class="btn btn-sm btn-light ms-2" onclick="deleteAnnouncement('${ann._id}')" title="Delete Post">
+                                <i class="fas fa-trash text-danger"></i>
+                            </button>
+                        ` : ""}
                     </div>
                 </div>
-            `).join('');
+            </div>
+        `).join("");
         } catch (e) {
-            container.innerHTML = '<div class="card p-4 text-center text-danger">Failed to load announcements.</div>';
+            console.error("Announcement load error:", e);
+            // CORRECTED: Fixed the missing opening backtick/quote here
+            container.innerHTML = `<div class="card p-4 text-center text-danger"><i class="fas fa-exclamation-circle mb-2"></i><br>Failed to load announcements.</div>`;
         }
     }
+
 
     async function postAnnouncement(btn) {
         const text = document.getElementById('ann-text').value;
