@@ -3,9 +3,21 @@ const { MongoClient, ObjectId } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 3000; // You were missing the PORT variable definition
+const multer = require('multer');
+const path = require('path');
+// Setup storage engine
+const storage = multer.diskStorage({
+    destination: './public/uploads/',
+    filename: function(req, file, cb) {
+        cb(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname));
+    }
+});
 
+// Init upload
+const upload = multer({ storage: storage });
 app.use(express.json());
 app.use(express.static('public'));
+app.use('/uploads', express.static('public/uploads')); // <--- ADD THIS LINE
 
 // --- MONGODB CLOUD SETUP ---
 // Ensure this URI is correct and your IP is whitelisted in MongoDB Atlas
@@ -46,6 +58,7 @@ app.post('/api/admin/maintenance/toggle', (req, res) => {
     console.log(`⚠️ Maintenance Mode: ${maintenanceMode ? 'ON' : 'OFF'}`);
     res.json({ success: true, maintenance: maintenanceMode });
 });
+
 
 // Check status (for frontend)
 app.get('/api/maintenance/status', (req, res) => {
@@ -287,29 +300,25 @@ app.get('/api/student/attendance/:studentId', async (req, res) => {
     }
 });
 
-// 9. Post/Update Announcement
-
-app.post('/api/announcements', async (req, res) => {
+// 9. Post/Update Announcement (WITH IMAGE SUPPORT)
+app.post('/api/announcements', upload.single('image'), async (req, res) => {
     try {
-        const { id, title, content, sender, type } = req.body;
+        const { text, sender, type } = req.body;
         const postData = { 
-            title: title || "School Update", 
-            content: content || "", 
+            content: text || "", 
             sender: sender || "ADIS Administration", 
             type: type || "General", 
+            imageUrl: req.file ? `/uploads/${req.file.filename}` : null,
             date: new Date() 
         };
 
-        if (id && ObjectId.isValid(id)) {
-            await db.collection('announcements').updateOne({ _id: new ObjectId(id) }, { $set: postData });
-        } else {
-            await db.collection('announcements').insertOne(postData);
-        }
+        await db.collection('announcements').insertOne(postData);
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
     }
 });
+
 
 // Delete Announcement
 app.delete('/api/announcements/:id', async (req, res) => {
