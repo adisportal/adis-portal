@@ -210,16 +210,6 @@
             </div>
             
             <div id="nav-menu">
-                <div class="nav-link" onclick="showSection('about-us', 'About ADIS')">
-                    <i class="fas fa-university me-3"></i> About Us
-                </div>                
-                <div class="nav-link" onclick="showSection('contact-us', 'Support')">
-                    <i class="fas fa-headset me-3"></i> Contact Us
-                </div>
-                <div class="nav-link text-danger" data-role="admin" style="display:none;" onclick="toggleMaintenanceMode()">
-                    <i class="fas fa-power-off me-3"></i> Toggle Maintenance
-                </div>
-
                 <div class="nav-link" onclick="showSection('announcements', 'Home')">
                     <i class="fas fa-home me-3"></i> Home
                 </div>                
@@ -235,10 +225,20 @@
                 <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage Students')">
                     <i class="fas fa-user-graduate me-3"></i> Manage Students
                 </div>                
-
+                
+                <div class="nav-link text-danger" data-role="admin" style="display:none;" onclick="toggleMaintenanceMode()">
+                    <i class="fas fa-power-off me-3"></i> Toggle Maintenance
+                </div>
                 <div class="nav-link" onclick="showSection('settings', 'Settings')">
                     <i class="fas fa-cog me-3"></i> Settings
+                </div> 
+
+                <div class="nav-link" onclick="showSection('about-us', 'About ADIS')">
+                    <i class="fas fa-university me-3"></i> About Us
                 </div>                
+                <div class="nav-link" onclick="showSection('contact-us', 'Support')">
+                    <i class="fas fa-headset me-3"></i> Contact Us
+                </div>
 
                 <div class="nav-link" onclick="logout()">
                     <i class="fas fa-sign-out-alt me-3"></i> Logout
