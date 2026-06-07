@@ -183,39 +183,59 @@ app.delete('/api/admin/teachers/:id', async (req, res) => {
 // C. Add/Update Student Route (Teacher Only)
 app.post('/api/teacher/students/upsert', async (req, res) => {
     try {
-        const { id, password, name, classId, totalFees } = req.body;
+        let { id, password, name, classId, totalFees } = req.body;
         
-        // 1. Data to update for both new and existing students
+        // 1. Validate that a name exists
+        if (!name || name.trim() === "") {
+            return res.status(400).json({ success: false, message: "Student name is required." });
+        }
+
+        // 2. Server-side Safety Net: If frontend didn't pass an ID, generate it here
+        if (!id || String(id).trim() === "") {
+            id = serverGenerateSnowflake();
+        } else {
+            id = String(id).trim(); // Force it to a clean string type
+        }
+
+        // 3. Data to update for both new and existing students
         let updateData = { 
             name: name,
             classId: classId,
-            totalFees: totalFees,
+            totalFees: parseFloat(totalFees) || 0,
             role: "student" 
         };
 
-        // 2. Hash password only if it's provided and not empty
+        // 4. Hash password only if it's provided and not empty
         if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
 
-        // --- UPSERT LOGIC ---
+        // --- UPSERT LOGIC WITH EXPLICIT STRING ID ---
         const result = await db.collection('users').updateOne(
-            { studentId: id, role: "student" },
+            { studentId: id, role: "student" }, // Enforces looking for the string key
             { 
                 $set: updateData,
-                $setOnInsert: { feesPaid: 0, performance: { academic: 0, tech: 0, arts: 0, sports: 0, practical: 0, feedback: "Welcome to ADIS!"
-                                                          }
-                              }
+                $setOnInsert: { 
+                    feesPaid: 0, 
+                    performance: { 
+                        academic: 0, 
+                        tech: 0, 
+                        arts: 0, 
+                        sports: 0, 
+                        practical: 0, 
+                        feedback: "Welcome to ADIS!"
+                    }
+                }
             },
             { upsert: true }
         );
 
         if (result.upsertedCount > 0) {
-            res.json({ success: true, message: "Student created successfully" });
+            res.json({ success: true, message: `Student created successfully with ID: ${id}`, generatedId: id });
         } else if (result.modifiedCount > 0 || result.matchedCount > 0) {
-            res.json({ success: true, message: "Student updated successfully" });
+            res.json({ success: true, message: "Student info updated successfully" });
         } else {
-            res.status(400).json({ success: false, message: "No changes made" });
+            res.status(400).json({ success: false, message: "No changes made to record" });
         }
     } catch (e) {
         console.error(e);
