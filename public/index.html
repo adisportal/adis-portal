@@ -1034,25 +1034,63 @@ async function toggleMaintenanceMode() {
 
     async function loadTeachers() {
         const list = document.getElementById('teacher-list');
+        if (!list) return;
         list.innerHTML = "Fetching...";
-        
+
         try {
             const res = await fetch('/api/teachers');
             const data = await res.json();
-            
-            if (data.length > 0) {
-                list.innerHTML = data.map(t => `
-                    <div class="card p-2 mb-2 d-flex justify-content-between align-items-center">
-                        <span><strong>${t.name}</strong> (${t.id}) - Class: ${t.classId}</span>
-                    </div>
-                `).join('');
-            } else {
-                list.innerHTML = `<div class="card p-2 text-center">No teachers found.</div>`;
-            }
-        } catch (error) {
-            list.innerHTML = `<div class="card p-2 text-center text-danger">Error loading teachers.</div>`;
+                    if (data.length > 0) {
+                        list.innerHTML = data.map(t => {
+                            return `
+                                 <div class="card p-2 mb-2 d-flex flex-row justify-content-between align-items-center shadow-sm"> 
+                                      <div>
+                                          <strong class="text-dark">${t.name}</strong> 
+                                          <span class="text-muted">(${t.studentId})</span>
+                                          <div class="small text-secondary">Class: ${t.classId || 'None'}</div>
+                                      </div>
+                                      <button class="btn btn-sm btn-outline-danger" onclick="deleteTeacher('${t.studentId}')">
+                                           <i class="fas fa-trash-alt me-1"></i> Delete
+                                      </button>
+                                    </div>
+                               `;
+                        }).join(''); 
+                        
+                    } else { 
+                        list.innerHTML = '<div class="card p-2 text-center text-muted">No teachers found.</div>'; 
+                    } 
+        } catch (error) { 
+            console.error("Error displaying teachers:", error);
+            list.innerHTML = '<div class="card p-2 text-center text-danger">Error loading teachers.</div>';
         }
     }
+
+
+
+    async function deleteTeacher(teacherId) {
+        if (!teacherId) return alert("Invalid Teacher ID");
+        if (!confirm(`Are you sure you want to permanently delete teacher ID: ${teacherId}?`)) return;
+
+        try {
+            const res = await fetch(`/api/admin/teachers/${teacherId}`, {
+                method: 'DELETE'
+            
+            });
+            
+            const result = await res.json();
+            
+            if (result.success) {
+                alert("Teacher account removed successfully.");
+                loadTeachers(); // Refresh the list on screen automatically
+            } else {
+                alert("Failed to delete teacher account.");
+            }
+        } catch (error) {
+            console.error("Delete network error:", error);
+            alert("API Connection Error. Could not connect to server.");
+        }
+    }
+
     
     async function addOrUpdateStudent(btn) {
         let studentIdInput = document.getElementById('s-id').value.trim();
