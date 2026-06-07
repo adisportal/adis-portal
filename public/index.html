@@ -469,22 +469,62 @@
     let touchStartX = 0; 
     let touchEndX = 0;
 
+    // ==========================================
+    // START: MINI-SNOWFLAKE AUTO-GENERATOR SETUP
+    // ==========================================
+    const SCHOOL_EPOCH = 1780000000; // Calibrated for 2026
+    const MACHINE_ID = "1";          // Change to "2" or "3" for other computers
+    let lastTimestamp = -1;
+    let sequence = 0;
+    
+    function generateMiniSnowflake() {
+        let currentTimestamp = Math.floor(Date.now() / 1000);
+        let timeOffset = currentTimestamp - SCHOOL_EPOCH;     
+        
+        if (currentTimestamp === lastTimestamp) {
+            sequence = (sequence + 1) % 10; // Loops 0-9 if clicked instantly
+        } else {
+            sequence = 0;
+            lastTimestamp = currentTimestamp;
+        }
+        return `${timeOffset}${MACHINE_ID}${sequence}`;
+    }
+
+    // Helper function to auto-fill the form on your UI
+    
+    function assignNewId() {
+        const generatedId = generateMiniSnowflake();
+        const idInput = document.getElementById("s-id");
+        
+        if (idInput) {
+            idInput.value = generatedId;
+        }
+    }
+    
+    // ==========================================
+    // END: MINI-SNOWFLAKE AUTO-GENERATOR SETUP
+    
+    // ==========================================
+
+
     // Add this at the top of your script
+    
     document.getElementById('togglePass').addEventListener('click', function() {
         const passField = document.getElementById('password');
         if (passField.type === 'password') {
             passField.type = 'text';
             this.classList.replace('fa-eye-slash', 'fa-eye');
+        
         } else {
+            
             passField.type = 'password';
             this.classList.replace('fa-eye', 'fa-eye-slash');
         }
     });
-
+    
     window.onload = function() {
         const splash = document.getElementById('splash-screen');                
         if (splash) splash.style.display = 'none';
-
         const savedUser = localStorage.getItem('currentUser');
         if (savedUser) {
             try {
