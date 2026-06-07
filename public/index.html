@@ -1049,40 +1049,55 @@ async function toggleMaintenanceMode() {
             list.innerHTML = `<div class="card p-2 text-center text-danger">Error loading teachers.</div>`;
         }
     }
-
+    
     async function addOrUpdateStudent(btn) {
+        let studentIdInput = document.getElementById('s-id').value.trim();
+
+        // AUTO-GENERATOR TRIGGER: If the field is empty, create a Snowflake ID instantly!
+        if (!studentIdInput || studentIdInput === "") {
+            studentIdInput = generateMiniSnowflake();
+            document.getElementById('s-id').value = studentIdInput; // Update field on screen
+        }
+
         const data = {
             name: document.getElementById('s-name').value,
-            id: document.getElementById('s-id').value, 
+            id: studentIdInput, // Uses the rock-solid unique Snowflake ID string
             password: document.getElementById('s-pass').value,
             classId: document.getElementById('s-class').value,
             totalFees: parseFloat(document.getElementById('s-fees').value) || 0
         };
-        
-        if(!data.id || !data.name) { 
-            alert("Student ID and Name are required"); 
-            if (result.success) {
-                loadClassStudents();
-                // Add this to clear the form
-                ['s-name', 's-id', 's-pass', 's-class', 's-fees'].forEach(id => document.getElementById(id).value = '');
-            }
 
-            return; 
+        // Form requirement check
+        
+        if (!data.id || !data.name) {
+            alert("Student ID and Name are required");
+            return;
         }
 
         btn.disabled = true;
         btn.innerText = "Saving...";
-
+        
+        
         try {
             const res = await fetch('/api/teacher/students/upsert', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(data)
-            });
             
+            });
+
             const result = await res.json();
             alert(result.message);
-            if (result.success) loadClassStudents();
+            
+            if (result.success) {
+                loadClassStudents();
+                // Clears out fields for the next student registration
+                
+                ['s-name', 's-id', 's-pass', 's-class', 's-fees'].forEach(id => {
+                    document.getElementById(id).value = '';
+                });
+            }
+        
         } catch (error) {
             alert("API Connection Error: " + error.message);
         } finally {
@@ -1090,6 +1105,7 @@ async function toggleMaintenanceMode() {
             btn.innerText = "Save Student";
         }
     }
+
 
     async function loadClassStudents() {
         const classId = document.getElementById('search-class').value;
