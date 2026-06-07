@@ -1057,54 +1057,59 @@ async function toggleMaintenanceMode() {
     async function addOrUpdateStudent(btn) {
         let studentIdInput = document.getElementById('s-id').value.trim();
 
-        // AUTO-GENERATOR TRIGGER: If the field is empty, create a Snowflake ID instantly!
+        // 1. AUTO-GENERATOR: If the field is empty, create a Snowflake ID instantly!
         if (!studentIdInput || studentIdInput === "") {
             studentIdInput = generateMiniSnowflake();
-            document.getElementById('s-id').value = studentIdInput; // Update field on screen
+            document.getElementById('s-id').value = studentIdInput; 
         }
 
         const data = {
-            name: document.getElementById('s-name').value,
-            id: studentIdInput, // Uses the rock-solid unique Snowflake ID string
+            name: document.getElementById('s-name').value.trim(),
+            id: studentIdInput, 
             password: document.getElementById('s-pass').value,
-            classId: document.getElementById('s-class').value,
+            classId: document.getElementById('s-class').value.trim(),
             totalFees: parseFloat(document.getElementById('s-fees').value) || 0
         };
 
-        // Form requirement check
-        
-        if (!data.id || !data.name) {
-            alert("Student ID and Name are required");
-            return;
+        // 2. CLEAN VALIDATION: Check fields BEFORE touching network parameters
+        if (!data.id || !data.name || !data.classId) {
+            alert("Student ID, Name, and Class are completely required!");
+            return; // Stops here safely if something is missing
         }
 
+        // Disable button to prevent double-clicks
         btn.disabled = true;
         btn.innerText = "Saving...";
-        
-        
+
         try {
+            console.log("Sending data to backend payload:", data);
+            
             const res = await fetch('/api/teacher/students/upsert', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(data)
-            
             });
+
 
             const result = await res.json();
             alert(result.message);
             
             if (result.success) {
-                loadClassStudents();
-                // Clears out fields for the next student registration
-                
+                // Refresh directory or list management if they exist
+                if (typeof loadClassStudents === "function") loadClassStudents();
+                if (typeof loadStudentDirectoryClasswise === "function") loadStudentDirectoryClasswise();
+            
+                // Clear out form inputs for the next entry
                 ['s-name', 's-id', 's-pass', 's-class', 's-fees'].forEach(id => {
-                    document.getElementById(id).value = '';
+                    const element = document.getElementById(id);
+                    if (element) element.value = '';
                 });
             }
-        
         } catch (error) {
+            console.error("Submission Error Details:", error);
             alert("API Connection Error: " + error.message);
         } finally {
+            
             btn.disabled = false;
             btn.innerText = "Save Student";
         }
