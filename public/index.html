@@ -925,8 +925,11 @@ async function toggleMaintenanceMode() {
                 body: JSON.stringify({ role: user.role, classId: user.classId })
             });
             const students = await res.json();
-            
-            if (students.length === 0) {
+
+            // 🔴 DEBUG LINE: Open your browser console (F12) to see what came back!
+            console.log("Students array received from server:", students);
+           
+            if (!students || students.length === 0) {
                 container.innerHTML = "No students found.";
                 return;
             }
@@ -951,6 +954,7 @@ async function toggleMaintenanceMode() {
             `).join('');
 
         } catch (e) {
+            console.error("Directory component error:", e);
             container.innerHTML = "Error loading directory.";
         }
     }
