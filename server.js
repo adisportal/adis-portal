@@ -38,6 +38,26 @@ connectToDatabase();
 
 let maintenanceMode = false; // Global switch
 
+// --- BACKEND MINI-SNOWFLAKE BACKUP GENERATOR ---
+const SCHOOL_EPOCH = 1780000000; 
+const MACHINE_ID = "1"; // Identifies this primary web server process
+let lastTimestamp = -1;
+let sequence = 0;
+
+function serverGenerateSnowflake() {
+    let currentTimestamp = Math.floor(Date.now() / 1000);
+    let timeOffset = currentTimestamp - SCHOOL_EPOCH; 
+    
+    if (currentTimestamp === lastTimestamp) {
+        sequence = (sequence + 1) % 10;
+    } else {
+        sequence = 0;
+        lastTimestamp = currentTimestamp;
+    }
+    return `${timeOffset}${MACHINE_ID}${sequence}`;
+}
+
+
 // Middleware to block access during maintenance
 app.use((req, res, next) => {
     // Allow the admin to bypass maintenance to fix things
