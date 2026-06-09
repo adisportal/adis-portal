@@ -4,7 +4,8 @@
   "description": "Ashwamedh Dream International School Portal",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "obfuscate": "javascript-obfuscator ./public/js --output ./public/dist/js --compact true --control-flow-flattening true --string-array-encoding base64"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
