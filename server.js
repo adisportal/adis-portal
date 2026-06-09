@@ -16,8 +16,15 @@ const storage = multer.diskStorage({
 // Init upload
 const upload = multer({ storage: storage });
 app.use(express.json());
-app.use(express.static('public'));
-app.use('/uploads', express.static('public/uploads')); // <--- ADD THIS LINE
+
+// 1. Tell Express to check the obfuscated 'dist' folder first for assets and scripts
+app.use('/dist', express.static(path.join(__dirname, 'public/dist')));
+
+// 2. Keep serving your uploads folder safely
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
+// 3. Fallback static route for any standard styles or images in the public root
+app.use(express.static(path.join(__dirname, 'public')));
 
 // --- MONGODB CLOUD SETUP ---
 // Ensure this URI is correct and your IP is whitelisted in MongoDB Atlas
