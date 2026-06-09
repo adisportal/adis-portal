@@ -1,3 +1,49 @@
+// Block Right-Click menu
+document.addEventListener('contextmenu', event => event.preventDefault());
+
+// Block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U (View Source)
+document.addEventListener('keydown', event => {
+  if (
+    event.key === 'F12' ||
+    (event.ctrlKey && event.shiftKey && ['I', 'J', 'C'].includes(event.key)) ||
+    (event.ctrlKey && event.key === 'U')
+  ) {
+    event.preventDefault();
+    return false;
+  }
+});
+
+(function () {
+  function trap() {
+    try {
+      (function d(i) {
+        if (('' + i / i).length !== 1 || i % 20 === 0) {
+          (function () {}).constructor('debugger')();
+        } else {
+          debugger;
+        }
+        d(++i);
+      })(0);
+    } catch (e) {
+      setTimeout(trap, 100);
+    }
+  }
+  // Start the trap only if DevTools might be opening
+  setInterval(trap, 500);
+})();
+
+setInterval(() => {
+  console.clear();
+}, 50);
+
+// Redefine console functions to do absolutely nothing
+if (typeof console !== 'undefined') {
+  console.log = function() {};
+  console.warn = function() {};
+  console.error = function() {};
+  console.info = function() {};
+}
+
 
     let touchStartX = 0; 
     let touchEndX = 0;
