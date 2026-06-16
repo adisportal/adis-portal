@@ -162,8 +162,6 @@ if (typeof console !== 'undefined') {
 
         // ⬇️ ADD THIS LINE TO LOAD DROPDOWNS ON LOG IN 
         loadClassDropdown();
-        // Change this line at the bottom of activateApp:
-        syncAllSystemDropdowns();
     }
 
     function logout() {
