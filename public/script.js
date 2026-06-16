@@ -209,13 +209,13 @@ if (typeof console !== 'undefined') {
 
         if(navMap[id]) document.getElementById(navMap[id]).classList.add('active');
 
-        if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
-        if (id === 'admin-teachers') { loadTeachers(); loadClassesForManagement(); }
-        if (id === 'student-directory') loadStudentDirectoryClasswise();
-        if (id === 'fees') loadFees();
-        if (id === 'study-material') loadMaterials();
-        if (id === 'staff-students') loadClassStudents();
-        
+      if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
+      if (id === 'admin-teachers') { loadClassDropdown(); loadTeachers(); loadClassesForManagement(); }
+      if (id === 'student-directory') loadStudentDirectoryClasswise();
+      if (id === 'fees') loadFees();
+      if (id === 'study-material') loadMaterials();
+      if (id === 'staff-students') { loadClassDropdown(); loadClassStudents(); }
+
         if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
 
