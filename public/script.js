@@ -159,6 +159,9 @@ if (typeof console !== 'undefined') {
 
         const savedPhoto = localStorage.getItem('userPhoto');
         if (savedPhoto) document.getElementById('user-avatar').innerHTML = `<img src="${savedPhoto}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`;
+
+        // ⬇️ ADD THIS LINE TO LOAD DROPDOWNS ON LOG IN 
+        loadClassDropdown();
     }
 
     function logout() {
