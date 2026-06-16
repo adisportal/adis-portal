@@ -774,26 +774,53 @@ async function toggleMaintenanceMode() {
             loadClassDropdown();
         }
     }
-        async function loadClassDropdown() {
-        const select = document.getElementById('att-class-select');
+
+    // --- UPGRADED CLASS DROPDOWN SYSTEM ---
+    async function loadClassDropdown() {
+      const studentSelect = document.getElementById('s-class');
+      const attSelect = document.getElementById('att-class-select');
+    
+      // If neither dropdown is on the current screen view, exit early
+      if (!studentSelect && !attSelect) return;
+
+      try {
         const res = await fetch('/api/classes');
         const classes = await res.json();
         
-        select.innerHTML = '<option value="">Select Class</option>';
+        let optionsHtml = '<option value="">-- Select Class --</option>';
+    
+        if (Array.isArray(classes) && classes.length > 0) {
+          classes.forEach(c => {
+            // Safeguard against string arrays or object collections from your API
+            const className = typeof c === 'object' && c !== null ? (c.className || c.name) : c;
+            if (className) {
+              optionsHtml += `<option value="${className}">${className}</option>`;
+
+            }
+          });
+        } else {
+          optionsHtml = '<option value="">No classes registered</option>';
+        }
         
-        classes.forEach(c => {
-            const option = document.createElement('option');
-            option.value = c.className;
-            option.innerText = c.className;
-            select.appendChild(option);
-        });
+        // Update both student panel and attendance dropdown targets automatically
+        if (studentSelect) studentSelect.innerHTML = optionsHtml;
+        if (attSelect) attSelect.innerHTML = optionsHtml;
+        
+      } catch (e) {
+        console.error("Error populating system class dropdowns:", e);
+        if (studentSelect) studentSelect.innerHTML = '<option value="">Error loading</option>';
+      }
     }
 
-    function clearAppData() {
-        if (confirm("Are you sure? This will clear local cached data.")) {
-            alert("Cache Cleared!");
-        }
-    }
+     function clearAppData() {
+       if (confirm("Are you sure? This will clear local cached data.")) {
+         localStorage.clear(); // Clears out your user authentication profile
+         alert("Cache Cleared!");
+         location.reload();
+       }
+     }
+
+
 
     // --- NEW ANNOUNCEMENT FEATURES START HERE ---
 async function loadClassDropdown() {
