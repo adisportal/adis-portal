@@ -329,7 +329,7 @@
                     <h6>Create New Class</h6>
                     <div class="row g-2">
                         <div class="col-8"><input type="text" id="new-class-name" class="form-control" placeholder="Class Name (e.g. 10A)"></div>
-                        <div class="col-4"><button class="btn btn-success w-100" onclick="createClass()">Add</button></div>
+                        <div class="col-4"><button class="btn btn-success w-100" onclick="handleCreateClassAndRefresh()">Add</button></div>
                     </div>
                 </div>
 
@@ -383,7 +383,11 @@
                             </div>
                         </div>
                         <div class="col-6"><input type="password" id="s-pass" class="form-control" placeholder="Password"></div>
-                        <div class="col-6"><input type="text" id="s-class" class="form-control" placeholder="Class (e.g. 10A)"></div>
+                        <div class="col-6">
+                            <select id="s-class" class="form-control" style="background-color: white; height: calc(2.25rem + 2px); padding-left: 12px;">
+                                <option value="">-- Loading Classes... --</option>
+                            </select>
+                        </div>
                         <div class="col-12"><input type="number" id="s-fees" class="form-control" placeholder="Total Fees"></div>
                     </div>
                     <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateStudent(this)">Save Student Data</button>
