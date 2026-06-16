@@ -823,23 +823,6 @@ async function toggleMaintenanceMode() {
      }
 
 
-
-    // --- NEW ANNOUNCEMENT FEATURES START HERE ---
-async function loadClassDropdown() {
-    const select = document.getElementById('att-class-select');
-    const res = await fetch('/api/classes');
-    const classes = await res.json();
-    
-    select.innerHTML = '<option value="">Select Class</option>';
-    
-    classes.forEach(c => {
-        const option = document.createElement('option');
-        option.value = c.className;
-        option.innerText = c.className;
-        select.appendChild(option);
-    });
-}
-
 function clearAppData() {
     if (confirm("Are you sure? This will clear local cached data.")) {
         alert("Cache Cleared!");
