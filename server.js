@@ -28,14 +28,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- MONGODB CLOUD SETUP ---
 // Ensure this URI is correct and your IP is whitelisted in MongoDB Atlas
-const uri = process.env.MONGO_URI || "mongodb+srv://ADMIN:Testing123@cluster0.52yyau2.mongodb.net/adis_testing?appName=Cluster0";
+const uri = process.env.MONGO_URI; 
 const client = new MongoClient(uri);
 
 let db;
 async function connectToDatabase() {
     try {
         await client.connect();
-        db = client.db("ADIS_Portal");
+        db = client.db("adis_testing");
         console.log("🚀 Successfully connected to MongoDB Cloud!");
     } catch (error) {
         console.error("❌ MongoDB Connection Error:", error);
