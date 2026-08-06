@@ -80,6 +80,18 @@ async function requireAuth(req, res, next) {
         if (user.sessionExpiresAt && new Date(user.sessionExpiresAt) < new Date()) {
             return res.status(401).json({ success: false, message: "Session expired. Please log in again." });
         }
+
+        // Sliding expiration: every authenticated request pushes the
+        // expiry another SESSION_LIFETIME_MS out, so a session only
+        // actually goes stale from real inactivity, not from a fixed
+        // clock that started ticking at login. Fire-and-forget — don't
+        // add latency/failure risk to the request over a best-effort
+        // housekeeping write.
+        db.collection('users').updateOne(
+            { studentId: userId },
+            { $set: { sessionExpiresAt: new Date(Date.now() + SESSION_LIFETIME_MS) } }
+        ).catch(e => console.error('Session refresh failed:', e.message));
+
         req.currentUser = user; // available to downstream handlers
         next();
     } catch (e) {
