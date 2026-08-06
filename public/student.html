@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal</title>
+    <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
+    <style>
+        body { padding: 20px; }
+        .card { margin-bottom: 20px; }
+        .progress-bar { height: 20px; border-radius: 10px; }
+    </style>
+</head>
+<body onload="loadStudentData()">
+    <header>
+        <a href="#" class="logo">ADIS Student</a>
+        <button onclick="localStorage.clear(); window.location.href='index.html';">Logout</button>
+    </header>
+    <div class="container">
+        <h1>Welcome, <span id="sName">Student</span></h1>
+
+        <div class="row">
+            <div class="col-sm-12 col-md-6">
+                <div class="card">
+                    <h3>Attendance</h3>
+                    <div class="progress-bar" id="attBar" style="background-color: #ddd;">
+                        <div id="attProgress" class="progress-bar green" style="width: 0%; height: 100%; border-radius: 10px;"></div>
+                    </div>
+                    <p><span id="attPercent">0</span>% Present</p>
+                </div>
+            </div>
+            
+            <div class="col-sm-12 col-md-6">
+                <div class="card">
+                    <h3>Fees Status</h3>
+                    <p>Total: $<span id="totalF">0</span> | Paid: $<span id="paidF">0</span></p>
+                    <p><strong>Remaining: $<span id="remF">0</span></strong></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Announcements</h3>
+            <div id="annList"></div>
+        </div>
+
+        <div class="card">
+            <h3>Study Materials</h3>
+            <div id="matList"></div>
+        </div>
+    </div>
+
+    <script>
+        const sId = localStorage.getItem('studentId');
+        const sClass = localStorage.getItem('classId');
+
+        async function loadStudentData() {
+            // Profile & Fees
+            const res = await fetch(`/api/student/profile/${sId}`);
+            const student = await res.json();
+            document.getElementById('sName').innerText = student.name;
+            document.getElementById('totalF').innerText = student.totalFees;
+            document.getElementById('paidF').innerText = student.feesPaid;
+            document.getElementById('remF').innerText = student.totalFees - student.feesPaid;
+
+            // Attendance
+            const attRes = await fetch(`/api/student/attendance/${sId}`);
+            const records = await attRes.json();
+            let present = records.filter(r => r.status === 'Present').length;
+            let percent = records.length > 0 ? (present / records.length) * 100 : 0;
+            
+            document.getElementById('attPercent').innerText = percent.toFixed(1);
+            document.getElementById('attProgress').style.width = percent + "%";
+            document.getElementById('attProgress').className = percent >= 75 ? "progress-bar green" : "progress-bar red";
+
+            // Announcements
+            const annRes = await fetch('/api/announcements');
+            const anns = await annRes.json();
+            document.getElementById('annList').innerHTML = anns.map(a => `<p><strong>${new Date(a.date).toLocaleDateString()}</strong>: ${a.text}</p>`).join('');
+
+            // Materials
+            const matRes = await fetch(`/api/materials/${sClass}`);
+            const mats = await matRes.json();
+            document.getElementById('matList').innerHTML = mats.map(m => `<p><a href="${m.link}" target="_blank">${m.title}</a></p>`).join('');
+        }
+    </script>
+</body>
+</html>
