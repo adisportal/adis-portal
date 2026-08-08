@@ -5,6 +5,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const multer = require('multer');
 const path = require('path');
+const ardosis = require('./ardosis-client');
 
 // Setup storage engine
 const storage = multer.diskStorage({
@@ -181,6 +182,10 @@ app.post('/api/login', async (req, res) => {
                 { $set: { currentSessionId: newSessionId, sessionExpiresAt: expiresAt } }
             );
 
+            // Fire-and-forget — never let an Ardosis hiccup block or fail
+            // an actual school login.
+            ardosis.syncUser({ studentId: id, name: user.name }).catch(() => {});
+
             res.json({
                 success: true,
                 sessionId: newSessionId,
@@ -235,6 +240,7 @@ app.post('/api/admin/teachers/upsert', requireAuth, requireRole('admin'), async 
             { upsert: true }
         );
         await logAudit(req, 'teacher_upsert', { targetId: id });
+        ardosis.syncUser({ studentId: id, name }).catch(() => {});
         res.json({
             success: true,
             message: result.upsertedCount > 0 ? "Teacher created successfully" : "Teacher updated successfully"
@@ -302,6 +308,7 @@ app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teac
         );
 
         await logAudit(req, 'student_upsert', { targetId: id });
+        ardosis.syncUser({ studentId: id, name }).catch(() => {});
 
         if (result.upsertedCount > 0) {
             res.json({ success: true, message: `Student created successfully with ID: ${id}`, generatedId: id });
