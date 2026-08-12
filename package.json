@@ -4,17 +4,12 @@
   "description": "Ashwamedh Dream International School Portal",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "obfuscate": "javascript-obfuscator ./public --output ./public/dist --compact true --control-flow-flattening true --string-array-encoding base64"
+    "start": "node server.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.5.0",
     "multer": "^1.4.5-lts.1"
-  },
-  "devDependencies": {
-    "javascript-obfuscator": "^4.1.1"
   }
 }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'adis-v1';
+const CACHE_NAME = 'adis-v2';
 const assets = [
   '/',
   '/index.html',

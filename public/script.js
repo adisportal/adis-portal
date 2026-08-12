@@ -11,11 +11,27 @@
         try { savedUser = JSON.parse(localStorage.getItem('currentUser')); } catch (e) {}
 
         const headers = Object.assign({}, options.headers || {});
+        let isAuthedCall = false;
         if (savedUser && savedUser.id && savedUser.sessionId) {
             headers['x-user-id'] = savedUser.id;
             headers['x-session-id'] = savedUser.sessionId;
+            isAuthedCall = true;
         }
-        return fetch(url, Object.assign({}, options, { headers }));
+
+        return fetch(url, Object.assign({}, options, { headers })).then(res => {
+            // If a call that carried session headers comes back
+            // unauthorized, the session has gone stale server-side
+            // (expired, or invalidated by a login elsewhere) — recover
+            // to a clean login screen immediately instead of leaving
+            // every panel on the page stuck showing a generic fetch
+            // error, which is what used to happen.
+            if (isAuthedCall && res.status === 401 && document.getElementById('main-app').style.display !== 'none') {
+                localStorage.removeItem('currentUser');
+                alert("Your session has expired. Please log in again.");
+                location.reload();
+            }
+            return res;
+        });
     }
 
     let touchStartX = 0; 
@@ -74,20 +90,39 @@
         }
     });
     
-    window.onload = function() {
+    window.onload = async function() {
         const splash = document.getElementById('splash-screen');                
         if (splash) splash.style.display = 'none';
         const savedUser = localStorage.getItem('currentUser');
         if (savedUser) {
             try {
                 const user = JSON.parse(savedUser);
-                activateApp(user);
+                if (!user || !user.id || !user.sessionId) throw new Error("Incomplete cached session");
+
+                // Verify the cached session is still valid server-side
+                // BEFORE trusting it and rendering the dashboard. This is
+                // the fix for the "close/reopen the app and everything
+                // shows an error" bug: previously the app rendered the
+                // full shell from the cached user with no check, then
+                // every section's data fetch 401'd — looking like the
+                // whole app was broken instead of "please log in again."
+                const check = await fetch(`/api/verify-session?userId=${encodeURIComponent(user.id)}&sessionId=${encodeURIComponent(user.sessionId)}`);
+                const result = await check.json();
+
+                if (result.active) {
+                    activateApp(user);
+                } else {
+                    localStorage.removeItem('currentUser');
+                    document.getElementById('login-page').style.display = 'flex';
+                    const err = document.getElementById('login-error');
+                    if (err) err.innerText = "Your session expired. Please log in again.";
+                }
             } catch (e) {
-                console.error("Storage parsing error", e);                
+                console.error("Storage parsing / session check error", e);
+                localStorage.removeItem('currentUser');
                 document.getElementById('login-page').style.display = 'flex';
             }
         } else {
-            // FIXED: Typo was 'doge'
             document.getElementById('login-page').style.display = 'flex';
         }
     };
