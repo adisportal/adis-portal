@@ -92,6 +92,7 @@
                 <span class="role-badge" id="user-display-role"></span>
                 
                 <div class="profile-details" id="profileDetails">
+                    <p class="small mb-1" id="user-display-school-row" style="display:none;"><strong>School:</strong> <span id="user-display-school">N/A</span></p>
                     <p class="small mb-1"><strong>Class:</strong> <span id="user-display-class">N/A</span></p>
                     <p class="small mb-1"><strong>ID:</strong> <span id="user-display-id">N/A</span></p>
                 </div>
@@ -102,6 +103,10 @@
                     <i class="fas fa-home me-3"></i> Home
                 </div>                
                 
+                <div class="nav-link" data-role="owner" style="display:none;" onclick="showSection('owner-panel', 'Owner Panel')">
+                    <i class="fas fa-crown me-3"></i> Owner Panel
+                </div>
+
                 <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('student-directory', 'Student Directory')">
                     <i class="fas fa-address-book me-3"></i> Student Directory
                 </div>
@@ -114,8 +119,8 @@
                     <i class="fas fa-user-graduate me-3"></i> Manage Students
                 </div>                
                 
-                <div class="nav-link text-danger" data-role="admin" style="display:none;" onclick="toggleMaintenanceMode()">
-                    <i class="fas fa-power-off me-3"></i> Toggle Maintenance
+                <div class="nav-link text-danger" data-role="owner" style="display:none;" onclick="toggleMaintenanceMode()">
+                    <i class="fas fa-power-off me-3"></i> Toggle Maintenance (All Schools)
                 </div>
                 <div class="nav-link" onclick="showSection('settings', 'Settings')">
                     <i class="fas fa-cog me-3"></i> Settings
@@ -249,6 +254,45 @@
                 </div>
             </div>
 
+            <div id="owner-panel" class="section-panel">
+                <h3 class="fw-bold mb-4">👑 Owner Panel</h3>
+
+                <div id="owner-stats" class="row g-2 mb-4"></div>
+
+                <div class="card p-3 mb-4">
+                    <h6>Create School</h6>
+                    <div class="row g-2">
+                        <div class="col-8"><input type="text" id="school-name" class="form-control" placeholder="School Name"></div>
+                        <div class="col-4"><button class="btn btn-success w-100" onclick="createSchool()">Add</button></div>
+                    </div>
+                </div>
+
+                <div id="school-management-list" class="mb-4">
+                    <h6>Schools</h6>
+                    <div id="schools-list-container">Loading schools...</div>
+                </div>
+
+                <div class="card p-3 mb-4">
+                    <h6>Add/Update School Admin</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><input type="text" id="a-name" class="form-control" placeholder="Full Name"></div>
+                        <div class="col-6"><input type="text" id="a-id" class="form-control" placeholder="Admin ID"></div>
+                        <div class="col-6"><input type="password" id="a-pass" class="form-control" placeholder="Password"></div>
+                        <div class="col-6">
+                            <select id="a-school" class="form-control" style="background-color: white; height: calc(2.25rem + 2px); padding-left: 12px;">
+                                <option value="">Select School</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateAdmin(this)">Save Admin</button>
+                </div>
+
+                <div id="admin-management-list">
+                    <h6>School Admins</h6>
+                    <div id="admins-list-container">Loading admins...</div>
+                </div>
+            </div>
+
             <div id="student-directory" class="section-panel">
                 <h3 class="fw-bold mb-4">📖 Student Directory</h3>
                 <div id="student-directory-container">Loading student data...</div>
@@ -357,6 +401,6 @@
         </div>
     </div>
 
-<script src="/script.js"></script>
+<script src="/dist/script.js"></script>
 </body>
 </html>
