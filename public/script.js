@@ -125,7 +125,15 @@
         document.getElementById('user-display-role').innerText = user.role.toUpperCase();
         document.getElementById('user-display-class').innerText = user.classId || 'N/A';
         document.getElementById('user-display-id').innerText = user.id;
-        
+
+        const schoolRow = document.getElementById('user-display-school-row');
+        if (user.schoolName) {
+            document.getElementById('user-display-school').innerText = user.schoolName;
+            schoolRow.style.display = 'block';
+        } else {
+            schoolRow.style.display = 'none';
+        }
+
         setupNav(user.role);
         loadDashboardBasedOnRole(user.role);
         loadAnnouncements(); // <--- Add this line here
@@ -159,7 +167,8 @@
     }
 
     function loadDashboardBasedOnRole(role) {
-        if(role === 'admin') showSection('admin-teachers', 'Admin Panel');
+        if(role === 'owner') { showSection('owner-panel', 'Owner Panel'); loadOwnerDashboard(); }
+        else if(role === 'admin') showSection('admin-teachers', 'Admin Panel');
         else if(role === 'teacher') showSection('staff-students', 'Manage Students');
         else showSection('announcements', 'Home');
     }
@@ -642,6 +651,199 @@ async function toggleMaintenanceMode() {
                 loadTeachers(); // Refresh the list on screen automatically
             } else {
                 alert("Failed to delete teacher account.");
+            }
+        } catch (error) {
+            console.error("Delete network error:", error);
+            alert("API Connection Error. Could not connect to server.");
+        }
+    }
+
+    // ==========================================
+    // OWNER PANEL: schools + school admins
+    // ==========================================
+    async function loadOwnerDashboard() {
+        loadOwnerStats();
+        loadSchools();
+        loadAdmins();
+    }
+
+    async function loadOwnerStats() {
+        const box = document.getElementById('owner-stats');
+        if (!box) return;
+        try {
+            const res = await authFetch('/api/owner/stats');
+            const s = await res.json();
+            const stat = (label, value) => `
+                <div class="col-6 col-md-3">
+                    <div class="card p-3 text-center">
+                        <div class="fw-bold fs-4">${value}</div>
+                        <div class="small text-muted">${label}</div>
+                    </div>
+                </div>`;
+            box.innerHTML = stat('Schools', s.schools) + stat('Admins', s.admins) + stat('Teachers', s.teachers) + stat('Students', s.students);
+        } catch (e) {
+            box.innerHTML = '';
+        }
+    }
+
+    async function createSchool() {
+        const nameInput = document.getElementById('school-name');
+        const name = nameInput.value.trim();
+        if (!name) return alert("Enter a school name");
+
+        try {
+            const res = await authFetch('/api/owner/schools/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) {
+                nameInput.value = '';
+                loadSchools();
+                loadOwnerStats();
+            }
+        } catch (e) {
+            alert("API Connection Error. Please try again.");
+        }
+    }
+
+    async function loadSchools() {
+        const list = document.getElementById('schools-list-container');
+        const select = document.getElementById('a-school');
+        if (!list) return;
+        list.innerHTML = "Loading...";
+
+        try {
+            const res = await authFetch('/api/owner/schools');
+            const schools = await res.json();
+
+            if (schools.length === 0) {
+                list.innerHTML = '<div class="card p-2 text-center text-muted">No schools yet. Create one above.</div>';
+            } else {
+                list.innerHTML = schools.map(s => `
+                    <div class="card p-2 mb-2 d-flex flex-row justify-content-between align-items-center shadow-sm">
+                        <div>
+                            <strong class="text-dark">${s.name}</strong>
+                            <span class="text-muted">(${s.schoolId})</span>
+                            <div class="small text-secondary">${s.adminCount} admin · ${s.teacherCount} teachers · ${s.studentCount} students</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteSchool('${s.schoolId}')">
+                            <i class="fas fa-trash-alt me-1"></i> Delete
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            if (select) {
+                const current = select.value;
+                select.innerHTML = '<option value="">Select School</option>' +
+                    schools.map(s => `<option value="${s.schoolId}">${s.name} (${s.schoolId})</option>`).join('');
+                if (current) select.value = current;
+            }
+        } catch (e) {
+            console.error("Error loading schools:", e);
+            list.innerHTML = '<div class="card p-2 text-center text-danger">Error loading schools.</div>';
+        }
+    }
+
+    async function deleteSchool(schoolId) {
+        if (!confirm(`Delete school ${schoolId}? This only works if it has no admins, teachers, or students left.`)) return;
+
+        try {
+            const res = await authFetch(`/api/owner/schools/${schoolId}`, { method: 'DELETE' });
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) {
+                loadSchools();
+                loadOwnerStats();
+            }
+        } catch (e) {
+            alert("API Connection Error. Please try again.");
+        }
+    }
+
+    async function addOrUpdateAdmin(btn) {
+        const data = {
+            name: document.getElementById('a-name').value.trim(),
+            id: document.getElementById('a-id').value.trim(),
+            password: document.getElementById('a-pass').value,
+            schoolId: document.getElementById('a-school').value
+        };
+
+        if (!data.id || !data.name) return alert("Admin ID and Name are required");
+        if (!data.schoolId) return alert("Select a school for this admin");
+
+        btn.disabled = true;
+        btn.innerText = "Saving...";
+
+        try {
+            const res = await authFetch('/api/owner/admins/upsert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) {
+                ['a-name', 'a-id', 'a-pass'].forEach(id => document.getElementById(id).value = '');
+                loadAdmins();
+                loadSchools();
+                loadOwnerStats();
+            }
+        } catch (e) {
+            alert("API Connection Error. Please try again.");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Save Admin";
+        }
+    }
+
+    async function loadAdmins() {
+        const list = document.getElementById('admins-list-container');
+        if (!list) return;
+        list.innerHTML = "Fetching...";
+
+        try {
+            const res = await authFetch('/api/owner/admins');
+            const admins = await res.json();
+
+            if (admins.length > 0) {
+                list.innerHTML = admins.map(a => `
+                    <div class="card p-2 mb-2 d-flex flex-row justify-content-between align-items-center shadow-sm">
+                        <div>
+                            <strong class="text-dark">${a.name}</strong>
+                            <span class="text-muted">(${a.studentId})</span>
+                            <div class="small text-secondary">${a.schoolName}</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteAdmin('${a.studentId}')">
+                            <i class="fas fa-trash-alt me-1"></i> Delete
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = '<div class="card p-2 text-center text-muted">No admins yet.</div>';
+            }
+        } catch (e) {
+            console.error("Error loading admins:", e);
+            list.innerHTML = '<div class="card p-2 text-center text-danger">Error loading admins.</div>';
+        }
+    }
+
+    async function deleteAdmin(adminId) {
+        if (!adminId) return alert("Invalid Admin ID");
+        if (!confirm(`Are you sure you want to permanently delete admin ID: ${adminId}?`)) return;
+
+        try {
+            const res = await authFetch(`/api/owner/admins/${adminId}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.success) {
+                alert("Admin account removed successfully.");
+                loadAdmins();
+                loadOwnerStats();
+            } else {
+                alert("Failed to delete admin account.");
             }
         } catch (error) {
             console.error("Delete network error:", error);

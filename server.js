@@ -57,6 +57,33 @@ function serverGenerateSnowflake() {
 // Never expose password hashes to the client, on any route.
 const PUBLIC_PROJECTION = { password: 0 };
 
+// --- SCHOOL CODE GENERATOR (for the Owner: create-school flow) ---
+function slugifySchoolCode(name) {
+    const base = (name || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    return base || 'SCH';
+}
+async function generateUniqueSchoolId(name) {
+    const base = slugifySchoolCode(name);
+    let candidate = base;
+    let attempt = 0;
+    while (await db.collection('schools').findOne({ schoolId: candidate })) {
+        attempt++;
+        candidate = `${base}${Math.floor(10 + Math.random() * 90)}`;
+        if (attempt > 20) throw new Error('Could not generate a unique school code');
+    }
+    return candidate;
+}
+
+// A studentId (login id) must be unique across the WHOLE platform, not just
+// one school, because login (/api/login, requireAuth) looks a user up by
+// studentId alone. This guards against an admin in School A accidentally
+// (or deliberately) overwriting/hijacking an id that belongs to School B.
+async function idBelongsToSchool(id, role, schoolId) {
+    const existing = await db.collection('users').findOne({ studentId: id });
+    if (!existing) return true;
+    return existing.role === role && existing.schoolId === schoolId;
+}
+
 // How long a login session stays valid before the app forces a re-login.
 const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -126,6 +153,7 @@ async function logAudit(req, action, details = {}) {
             action,
             actorId: req.currentUser?.studentId || 'unknown',
             actorRole: req.currentUser?.role || 'unknown',
+            schoolId: req.currentUser?.schoolId || null,
             details,
             date: new Date()
         });
@@ -149,8 +177,10 @@ app.use((req, res, next) => {
     next();
 });
 
-// Admin-only: toggle maintenance mode
-app.post('/api/admin/maintenance/toggle', requireAuth, requireRole('admin'), async (req, res) => {
+// Owner-only: toggle maintenance mode. This is now a platform-wide switch
+// that blocks EVERY school, so it can no longer be left to a single
+// school's admin (a per-school pause is a good Phase 2 candidate).
+app.post('/api/admin/maintenance/toggle', requireAuth, requireRole('owner'), async (req, res) => {
     const { status } = req.body;
     maintenanceMode = !!status;
     await logAudit(req, 'maintenance_toggle', { status: maintenanceMode });
@@ -186,6 +216,12 @@ app.post('/api/login', async (req, res) => {
             // an actual school login.
             ardosis.syncUser({ studentId: id, name: user.name }).catch(() => {});
 
+            let schoolName = null;
+            if (user.schoolId) {
+                const school = await db.collection('schools').findOne({ schoolId: user.schoolId });
+                schoolName = school ? school.name : null;
+            }
+
             res.json({
                 success: true,
                 sessionId: newSessionId,
@@ -194,6 +230,8 @@ app.post('/api/login', async (req, res) => {
                     role: user.role,
                     id: user.studentId,
                     classId: user.classId,
+                    schoolId: user.schoolId || null,
+                    schoolName: schoolName,
                     performance: user.performance || {}
                 }
             });
@@ -222,6 +260,130 @@ app.post('/api/logout', requireAuth, async (req, res) => {
 });
 
 // =======================================================================
+// OWNER: SCHOOLS & ADMINS
+// The Owner is the top of the hierarchy — creates schools and the admin
+// account for each one. Everything below (teachers/students/etc.) stays
+// scoped to a single school via req.currentUser.schoolId.
+// =======================================================================
+app.post('/api/owner/schools/create', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ success: false, message: "School name is required." });
+        }
+        const schoolId = await generateUniqueSchoolId(name.trim());
+        await db.collection('schools').insertOne({ schoolId, name: name.trim(), createdAt: new Date() });
+        await logAudit(req, 'school_create', { schoolId, name: name.trim() });
+        res.json({ success: true, message: `School created with code ${schoolId}`, schoolId });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.get('/api/owner/schools', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const schools = await db.collection('schools').find({}).sort({ name: 1 }).toArray();
+        const counts = await db.collection('users').aggregate([
+            { $match: { role: { $in: ['admin', 'teacher', 'student'] } } },
+            { $group: { _id: { schoolId: '$schoolId', role: '$role' }, count: { $sum: 1 } } }
+        ]).toArray();
+        const withCounts = schools.map(s => {
+            const forSchool = counts.filter(c => c._id.schoolId === s.schoolId);
+            const get = role => (forSchool.find(c => c._id.role === role) || {}).count || 0;
+            return { ...s, adminCount: get('admin'), teacherCount: get('teacher'), studentCount: get('student') };
+        });
+        res.json(withCounts);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
+app.delete('/api/owner/schools/:schoolId', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const { schoolId } = req.params;
+        const userCount = await db.collection('users').countDocuments({ schoolId, role: { $in: ['admin', 'teacher', 'student'] } });
+        if (userCount > 0) {
+            return res.status(400).json({ success: false, message: `Cannot delete: ${userCount} users still belong to this school. Remove them first.` });
+        }
+        await db.collection('schools').deleteOne({ schoolId });
+        await logAudit(req, 'school_delete', { schoolId });
+        res.json({ success: true, message: "School deleted." });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+app.post('/api/owner/admins/upsert', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const { id, password, name, schoolId } = req.body;
+        if (!id || !name || !schoolId) {
+            return res.status(400).json({ success: false, message: "ID, name and schoolId are required." });
+        }
+        const school = await db.collection('schools').findOne({ schoolId });
+        if (!school) return res.status(400).json({ success: false, message: "Unknown schoolId." });
+
+        if (!(await idBelongsToSchool(id, 'admin', schoolId))) {
+            return res.status(400).json({ success: false, message: "That ID is already in use by a different user or school." });
+        }
+
+        let updateData = { name, role: "admin", schoolId };
+        if (password && password.trim() !== "") {
+            updateData.password = await bcrypt.hash(password, 10);
+        }
+        const result = await db.collection('users').updateOne(
+            { studentId: id, role: "admin" },
+            { $set: updateData },
+            { upsert: true }
+        );
+        await logAudit(req, 'admin_upsert', { targetId: id, schoolId });
+        res.json({
+            success: true,
+            message: result.upsertedCount > 0 ? "Admin created successfully" : "Admin updated successfully"
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.delete('/api/owner/admins/:id', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        await db.collection('users').deleteOne({ studentId: req.params.id, role: "admin" });
+        await logAudit(req, 'admin_delete', { targetId: req.params.id });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+app.get('/api/owner/admins', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const admins = await db.collection('users').find({ role: "admin" }, { projection: PUBLIC_PROJECTION }).sort({ name: 1 }).toArray();
+        const schools = await db.collection('schools').find({}).toArray();
+        const schoolNameById = Object.fromEntries(schools.map(s => [s.schoolId, s.name]));
+        res.json(admins.map(a => ({ ...a, schoolName: schoolNameById[a.schoolId] || 'Unknown' })));
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+app.get('/api/owner/stats', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const [schools, admins, teachers, students] = await Promise.all([
+            db.collection('schools').countDocuments({}),
+            db.collection('users').countDocuments({ role: 'admin' }),
+            db.collection('users').countDocuments({ role: 'teacher' }),
+            db.collection('users').countDocuments({ role: 'student' })
+        ]);
+        res.json({ schools, admins, teachers, students });
+    } catch (e) {
+        res.status(500).json({ schools: 0, admins: 0, teachers: 0, students: 0 });
+    }
+});
+
+// =======================================================================
 // ADMIN: TEACHERS
 // =======================================================================
 app.post('/api/admin/teachers/upsert', requireAuth, requireRole('admin'), async (req, res) => {
@@ -230,12 +392,16 @@ app.post('/api/admin/teachers/upsert', requireAuth, requireRole('admin'), async 
         if (!id || !name) {
             return res.status(400).json({ success: false, message: "ID and name are required." });
         }
-        let updateData = { name, classId, role: "teacher" };
+        const schoolId = req.currentUser.schoolId;
+        if (!(await idBelongsToSchool(id, 'teacher', schoolId))) {
+            return res.status(400).json({ success: false, message: "That ID is already in use by a different user or school." });
+        }
+        let updateData = { name, classId, role: "teacher", schoolId };
         if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
         const result = await db.collection('users').updateOne(
-            { studentId: id, role: "teacher" },
+            { studentId: id, role: "teacher", schoolId },
             { $set: updateData },
             { upsert: true }
         );
@@ -253,7 +419,7 @@ app.post('/api/admin/teachers/upsert', requireAuth, requireRole('admin'), async 
 
 app.delete('/api/admin/teachers/:id', requireAuth, requireRole('admin'), async (req, res) => {
     try {
-        await db.collection('users').deleteOne({ studentId: req.params.id, role: "teacher" });
+        await db.collection('users').deleteOne({ studentId: req.params.id, role: "teacher", schoolId: req.currentUser.schoolId });
         await logAudit(req, 'teacher_delete', { targetId: req.params.id });
         res.json({ success: true });
     } catch (e) {
@@ -263,7 +429,7 @@ app.delete('/api/admin/teachers/:id', requireAuth, requireRole('admin'), async (
 
 app.get('/api/teachers', requireAuth, requireRole('admin'), async (req, res) => {
     try {
-        const teachers = await db.collection('users').find({ role: "teacher" }, { projection: PUBLIC_PROJECTION }).toArray();
+        const teachers = await db.collection('users').find({ role: "teacher", schoolId: req.currentUser.schoolId }, { projection: PUBLIC_PROJECTION }).toArray();
         res.json(teachers);
     } catch (e) {
         res.status(500).json([]);
@@ -279,24 +445,29 @@ app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teac
         if (!name || name.trim() === "") {
             return res.status(400).json({ success: false, message: "Student name is required." });
         }
+        const schoolId = req.currentUser.schoolId;
         if (!id || String(id).trim() === "") {
             id = serverGenerateSnowflake();
         } else {
             id = String(id).trim();
+            if (!(await idBelongsToSchool(id, 'student', schoolId))) {
+                return res.status(400).json({ success: false, message: "That ID is already in use by a different user or school." });
+            }
         }
 
         let updateData = {
             name: name,
             classId: classId,
             totalFees: parseFloat(totalFees) || 0,
-            role: "student"
+            role: "student",
+            schoolId
         };
         if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
 
         const result = await db.collection('users').updateOne(
-            { studentId: id, role: "student" },
+            { studentId: id, role: "student", schoolId },
             {
                 $set: updateData,
                 $setOnInsert: {
@@ -325,7 +496,7 @@ app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teac
 
 app.delete('/api/teacher/students/:id', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
     try {
-        await db.collection('users').deleteOne({ studentId: req.params.id, role: "student" });
+        await db.collection('users').deleteOne({ studentId: req.params.id, role: "student", schoolId: req.currentUser.schoolId });
         await logAudit(req, 'student_delete', { targetId: req.params.id });
         res.json({ success: true });
     } catch (e) {
@@ -336,7 +507,7 @@ app.delete('/api/teacher/students/:id', requireAuth, requireRole('admin', 'teach
 app.post('/api/teacher/students/list', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
     try {
         const { role, classId } = req.body;
-        let query = { role: "student" };
+        let query = { role: "student", schoolId: req.currentUser.schoolId };
         if (role === "teacher") query.classId = classId;
         const students = await db.collection('users').find(query, { projection: PUBLIC_PROJECTION }).sort({ classId: 1, name: 1 }).toArray();
         res.json(students);
@@ -349,7 +520,7 @@ app.post('/api/teacher/students/list', requireAuth, requireRole('admin', 'teache
 app.get('/api/students/class/:classId', requireAuth, async (req, res) => {
     try {
         const students = await db.collection('users').find(
-            { classId: req.params.classId, role: "student" },
+            { classId: req.params.classId, role: "student", schoolId: req.currentUser.schoolId },
             { projection: PUBLIC_PROJECTION }
         ).toArray();
         res.json(students);
@@ -365,7 +536,7 @@ app.post('/api/fees/update', requireAuth, requireRole('admin', 'teacher'), async
     try {
         const { studentId, amountPaid } = req.body;
         await db.collection('users').updateOne(
-            { studentId: studentId },
+            { studentId: studentId, schoolId: req.currentUser.schoolId },
             { $inc: { feesPaid: amountPaid } }
         );
         await logAudit(req, 'fees_update', { targetId: studentId, amountPaid });
@@ -382,7 +553,8 @@ app.get('/api/attendance/:classId/:date', requireAuth, requireRole('admin', 'tea
     try {
         const records = await db.collection('attendance').find({
             classId: req.params.classId,
-            date: req.params.date
+            date: req.params.date,
+            schoolId: req.currentUser.schoolId
         }).toArray();
         res.json(records);
     } catch (e) {
@@ -393,9 +565,10 @@ app.get('/api/attendance/:classId/:date', requireAuth, requireRole('admin', 'tea
 app.post('/api/attendance/update', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
     try {
         const { studentId, date, status, classId } = req.body;
+        const schoolId = req.currentUser.schoolId;
         await db.collection('attendance').updateOne(
-            { studentId: studentId, date: date },
-            { $set: { status: status, classId: classId } },
+            { studentId: studentId, date: date, schoolId },
+            { $set: { status: status, classId: classId, schoolId } },
             { upsert: true }
         );
         await logAudit(req, 'attendance_update', { targetId: studentId, date, status });
@@ -408,7 +581,8 @@ app.post('/api/attendance/update', requireAuth, requireRole('admin', 'teacher'),
 app.get('/api/student/attendance/:studentId', requireAuth, requireSelfOrRole('studentId', 'teacher'), async (req, res) => {
     try {
         const records = await db.collection('attendance').find({
-            studentId: req.params.studentId
+            studentId: req.params.studentId,
+            schoolId: req.currentUser.schoolId
         }).sort({ date: -1 }).toArray();
         res.json(records);
     } catch (e) {
@@ -422,7 +596,7 @@ app.get('/api/student/attendance/:studentId', requireAuth, requireSelfOrRole('st
 app.get('/api/student/profile/:studentId', requireAuth, requireSelfOrRole('studentId', 'teacher'), async (req, res) => {
     try {
         const student = await db.collection('users').findOne(
-            { studentId: req.params.studentId },
+            { studentId: req.params.studentId, schoolId: req.currentUser.schoolId },
             { projection: PUBLIC_PROJECTION }
         );
         res.json(student);
@@ -442,7 +616,8 @@ app.post('/api/announcements', requireAuth, requireRole('admin'), upload.single(
             sender: sender || "ADIS Administration",
             type: type || "General",
             imageUrl: req.file ? `/uploads/${req.file.filename}` : null,
-            date: new Date()
+            date: new Date(),
+            schoolId: req.currentUser.schoolId
         };
         await db.collection('announcements').insertOne(postData);
         await logAudit(req, 'announcement_post', {});
@@ -454,7 +629,7 @@ app.post('/api/announcements', requireAuth, requireRole('admin'), upload.single(
 
 app.get('/api/announcements', requireAuth, async (req, res) => {
     try {
-        const records = await db.collection('announcements').find({}).sort({ date: -1 }).toArray();
+        const records = await db.collection('announcements').find({ schoolId: req.currentUser.schoolId }).sort({ date: -1 }).toArray();
         res.json(records);
     } catch (e) {
         res.status(500).json({ error: "Database error" });
@@ -463,7 +638,7 @@ app.get('/api/announcements', requireAuth, async (req, res) => {
 
 app.delete('/api/announcements/:id', requireAuth, requireRole('admin'), async (req, res) => {
     try {
-        await db.collection('announcements').deleteOne({ _id: new ObjectId(req.params.id) });
+        await db.collection('announcements').deleteOne({ _id: new ObjectId(req.params.id), schoolId: req.currentUser.schoolId });
         await logAudit(req, 'announcement_delete', { targetId: req.params.id });
         res.json({ success: true });
     } catch (e) {
@@ -476,7 +651,7 @@ app.delete('/api/announcements/:id', requireAuth, requireRole('admin'), async (r
 // =======================================================================
 app.post('/api/materials', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
     try {
-        const newMaterial = { ...req.body, date: new Date() };
+        const newMaterial = { ...req.body, date: new Date(), schoolId: req.currentUser.schoolId };
         await db.collection('materials').insertOne(newMaterial);
         await logAudit(req, 'material_post', {});
         res.json({ success: true });
@@ -487,7 +662,7 @@ app.post('/api/materials', requireAuth, requireRole('admin', 'teacher'), async (
 
 app.get('/api/materials/:classId', requireAuth, async (req, res) => {
     try {
-        const materials = await db.collection('materials').find({ classId: req.params.classId }).sort({ date: -1 }).toArray();
+        const materials = await db.collection('materials').find({ classId: req.params.classId, schoolId: req.currentUser.schoolId }).sort({ date: -1 }).toArray();
         res.json(materials);
     } catch (e) {
         res.status(500).json({ error: "Database error" });
@@ -501,7 +676,7 @@ app.post('/api/performance/update', requireAuth, requireRole('admin', 'teacher')
     try {
         const { studentId, performanceData } = req.body;
         await db.collection('users').updateOne(
-            { studentId: studentId },
+            { studentId: studentId, schoolId: req.currentUser.schoolId },
             { $set: { performance: performanceData } }
         );
         await logAudit(req, 'performance_update', { targetId: studentId });
@@ -517,11 +692,12 @@ app.post('/api/performance/update', requireAuth, requireRole('admin', 'teacher')
 app.post('/api/admin/classes/create', requireAuth, requireRole('admin'), async (req, res) => {
     try {
         const { className } = req.body;
-        const existingClass = await db.collection('classes').findOne({ className });
+        const schoolId = req.currentUser.schoolId;
+        const existingClass = await db.collection('classes').findOne({ className, schoolId });
         if (existingClass) {
             return res.status(400).json({ success: false, message: "Class already exists" });
         }
-        await db.collection('classes').insertOne({ className, createdAt: new Date() });
+        await db.collection('classes').insertOne({ className, schoolId, createdAt: new Date() });
         await logAudit(req, 'class_create', { className });
         res.json({ success: true, message: "Class created successfully" });
     } catch (e) {
@@ -532,7 +708,7 @@ app.post('/api/admin/classes/create', requireAuth, requireRole('admin'), async (
 
 app.get('/api/classes', requireAuth, async (req, res) => {
     try {
-        const classes = await db.collection('classes').find().toArray();
+        const classes = await db.collection('classes').find({ schoolId: req.currentUser.schoolId }).toArray();
         res.json(classes);
     } catch (e) {
         res.status(500).json([]);
@@ -542,14 +718,15 @@ app.get('/api/classes', requireAuth, async (req, res) => {
 app.delete('/api/admin/classes/delete/:className', requireAuth, requireRole('admin'), async (req, res) => {
     try {
         const className = req.params.className;
-        const studentsInClass = await db.collection('users').countDocuments({ classId: className, role: "student" });
+        const schoolId = req.currentUser.schoolId;
+        const studentsInClass = await db.collection('users').countDocuments({ classId: className, role: "student", schoolId });
         if (studentsInClass > 0) {
             return res.status(400).json({
                 success: false,
                 message: `Cannot delete class. There are still ${studentsInClass} students in ${className}. Please transfer them first.`
             });
         }
-        await db.collection('classes').deleteOne({ className });
+        await db.collection('classes').deleteOne({ className, schoolId });
         await logAudit(req, 'class_delete', { className });
         res.json({ success: true, message: "Class deleted successfully" });
     } catch (e) {
@@ -562,7 +739,7 @@ app.post('/api/admin/transfer-class', requireAuth, requireRole('admin'), async (
     try {
         const { fromClass, toClass } = req.body;
         const result = await db.collection('users').updateMany(
-            { classId: fromClass, role: "student" },
+            { classId: fromClass, role: "student", schoolId: req.currentUser.schoolId },
             { $set: { classId: toClass } }
         );
         await logAudit(req, 'class_transfer', { fromClass, toClass, count: result.modifiedCount });
@@ -579,7 +756,7 @@ app.post('/api/admin/transfer-class', requireAuth, requireRole('admin'), async (
 app.get('/api/admin/users-classwise', requireAuth, requireRole('admin'), async (req, res) => {
     try {
         const data = await db.collection('users').aggregate([
-            { $match: { role: { $ne: "admin" } } },
+            { $match: { role: { $ne: "admin" }, schoolId: req.currentUser.schoolId } },
             { $sort: { classId: 1, name: 1 } },
             {
                 $group: {
@@ -600,8 +777,10 @@ app.post('/api/admin/overwrite-student', requireAuth, requireRole('admin'), asyn
     try {
         const { targetId, updateFields } = req.body;
         delete updateFields.password; // password changes must go through the upsert route (needs hashing)
+        delete updateFields.schoolId; // a school can't be reassigned via this route
+        delete updateFields.role;
         await db.collection('users').updateOne(
-            { studentId: targetId },
+            { studentId: targetId, schoolId: req.currentUser.schoolId },
             { $set: updateFields }
         );
         await logAudit(req, 'student_overwrite', { targetId, fields: Object.keys(updateFields) });
@@ -614,7 +793,7 @@ app.post('/api/admin/overwrite-student', requireAuth, requireRole('admin'), asyn
 app.get('/api/admin/active-sessions', requireAuth, requireRole('admin'), async (req, res) => {
     try {
         const activeUsers = await db.collection('users')
-            .find({ currentSessionId: { $ne: null } })
+            .find({ currentSessionId: { $ne: null }, schoolId: req.currentUser.schoolId })
             .project({ name: 1, studentId: 1, role: 1 })
             .toArray();
         res.json(activeUsers);
@@ -626,7 +805,7 @@ app.get('/api/admin/active-sessions', requireAuth, requireRole('admin'), async (
 // New: view the audit trail
 app.get('/api/admin/audit-log', requireAuth, requireRole('admin'), async (req, res) => {
     try {
-        const logs = await db.collection('auditLogs').find({}).sort({ date: -1 }).limit(200).toArray();
+        const logs = await db.collection('auditLogs').find({ schoolId: req.currentUser.schoolId }).sort({ date: -1 }).limit(200).toArray();
         res.json(logs);
     } catch (e) {
         res.status(500).json([]);
