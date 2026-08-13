@@ -89,7 +89,7 @@
         }
     });
     
-    window.onload = async function() {
+    document.addEventListener('DOMContentLoaded', async function() {
         const splash = document.getElementById('splash-screen');
         if (splash) splash.style.display = 'none';
 
@@ -132,7 +132,22 @@
             console.error("Session verification failed, using cached session:", e);
             activateApp(user);
         }
-    };
+    });
+
+    // Safety net: however unlikely, never leave the splash screen up
+    // forever (a slow/blocked image, a stuck service worker, anything).
+    // Force it down after a few seconds so the user can always at least
+    // reach the login screen.
+    setTimeout(() => {
+        const splash = document.getElementById('splash-screen');
+        const mainApp = document.getElementById('main-app');
+        if (splash && splash.style.display !== 'none') {
+            splash.style.display = 'none';
+            if (!mainApp || mainApp.style.display !== 'block') {
+                document.getElementById('login-page').style.display = 'flex';
+            }
+        }
+    }, 6000);
 
     async function handleLogin() {
         const id = document.getElementById('username').value.trim();
