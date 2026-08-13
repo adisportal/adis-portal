@@ -15,7 +15,22 @@
             headers['x-user-id'] = savedUser.id;
             headers['x-session-id'] = savedUser.sessionId;
         }
-        return fetch(url, Object.assign({}, options, { headers }));
+
+        return fetch(url, Object.assign({}, options, { headers })).then(res => {
+            // Global 401 handling: a session that's expired or was
+            // invalidated (e.g. logged in elsewhere) should bounce back
+            // to the login screen instead of leaving broken, half-loaded
+            // panels on screen. Login itself is exempt since a bad
+            // password legitimately 401s and should just show the normal
+            // "Invalid Credentials" message, not force a reload.
+            if (res.status === 401 && url !== '/api/login') {
+                localStorage.removeItem('currentUser');
+                alert('Your session has expired. Please log in again.');
+                location.reload();
+                return new Promise(() => {}); // reload is underway; stop here
+            }
+            return res;
+        });
     }
 
     let touchStartX = 0; 
@@ -74,21 +89,48 @@
         }
     });
     
-    window.onload = function() {
-        const splash = document.getElementById('splash-screen');                
+    window.onload = async function() {
+        const splash = document.getElementById('splash-screen');
         if (splash) splash.style.display = 'none';
+
         const savedUser = localStorage.getItem('currentUser');
-        if (savedUser) {
-            try {
-                const user = JSON.parse(savedUser);
+        if (!savedUser) {
+            document.getElementById('login-page').style.display = 'flex';
+            return;
+        }
+
+        let user;
+        try {
+            user = JSON.parse(savedUser);
+        } catch (e) {
+            console.error("Storage parsing error", e);
+            localStorage.removeItem('currentUser');
+            document.getElementById('login-page').style.display = 'flex';
+            return;
+        }
+
+        // Don't trust a cached session blindly on app open — confirm with
+        // the server first (it may have expired, or been invalidated by a
+        // login elsewhere). This matters most for the Android WebView
+        // wrapper: closing and reopening it used to silently show a
+        // "dashboard" that broke on the very first data request.
+        try {
+            const res = await fetch(`/api/verify-session?userId=${encodeURIComponent(user.id)}&sessionId=${encodeURIComponent(user.sessionId)}`);
+            const data = await res.json();
+            if (data.active) {
                 activateApp(user);
-            } catch (e) {
-                console.error("Storage parsing error", e);                
+            } else {
+                localStorage.removeItem('currentUser');
                 document.getElementById('login-page').style.display = 'flex';
             }
-        } else {
-            // FIXED: Typo was 'doge'
-            document.getElementById('login-page').style.display = 'flex';
+        } catch (e) {
+            // Network hiccup / cold start (Render free tier can take 50s+
+            // to wake up) — fall back to the cached session rather than
+            // forcing a re-login for something that isn't the user's
+            // fault. A genuinely dead session will still be caught by the
+            // global 401 handler in authFetch on the next real request.
+            console.error("Session verification failed, using cached session:", e);
+            activateApp(user);
         }
     };
 
@@ -113,7 +155,10 @@
             } else {
                 alert("Login Failed: " + result.message);
             }
-        } catch (e) { alert("Server Error"); }
+        } catch (e) {
+            console.error("Login request failed:", e);
+            alert("Couldn't reach the server. If the app has been idle a while, it may still be waking up (free hosting tier) — please wait ~30 seconds and try again.");
+        }
         btn.innerText = "LOGIN"; btn.disabled = false;
     }
 
