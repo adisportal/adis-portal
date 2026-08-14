@@ -451,16 +451,16 @@
             <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">
                 <i class="fas fa-home"></i>Home
             </div>
-            <div class="nav-item role-admin-teacher" id="nav-manage" style="display:none;" onclick="showSection('staff-students', 'Manage')">
+            <div class="nav-item" id="nav-manage" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage')">
                 <i class="fas fa-users-cog"></i>Manage
             </div>
-            <div class="nav-item" id="nav-att" onclick="showSection('attendance', 'Attendance')">
+            <div class="nav-item" id="nav-att" data-role="admin,teacher,student" style="display:none;" onclick="showSection('attendance', 'Attendance')">
                 <i class="fas fa-user-check"></i>Attendance
             </div>
-            <div class="nav-item" id="nav-fees" onclick="showSection('fees', 'Fees')">
+            <div class="nav-item" id="nav-fees" data-role="admin,teacher,student" style="display:none;" onclick="showSection('fees', 'Fees')">
                 <i class="fas fa-credit-card"></i>Fees
             </div>
-            <div class="nav-item" id="nav-mat" onclick="showSection('study-material', 'Materials')">
+            <div class="nav-item" id="nav-mat" data-role="admin,teacher,student" style="display:none;" onclick="showSection('study-material', 'Materials')">
                 <i class="fas fa-book"></i>Materials
             </div>
         </div>

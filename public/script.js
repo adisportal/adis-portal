@@ -225,10 +225,11 @@
             link.style.display = allowedRoles.includes(role) ? 'flex' : 'none';
         });
 
-        const bottomManage = document.getElementById('nav-manage');
-        if (bottomManage) {
-            bottomManage.style.display = (role === 'admin' || role === 'teacher') ? 'block' : 'none';
-        }
+        const bottomLinks = document.querySelectorAll('.bottom-nav [data-role]');
+        bottomLinks.forEach(link => {
+            const allowedRoles = link.getAttribute('data-role').split(',');
+            link.style.display = allowedRoles.includes(role) ? 'block' : 'none';
+        });
     }
 
     function loadDashboardBasedOnRole(role) {
