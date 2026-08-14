@@ -216,6 +216,40 @@ async function notifyUser(schoolId, recipientId, type, message, link = null) {
     }
 }
 
+// =======================================================================
+// CHAT — shared helpers (Phase 2C)
+// A thread is uniquely identified by (type, sorted participantIds, and
+// studentId when the type is teacher-parent — the same two people could
+// otherwise collide across two different children).
+// =======================================================================
+async function findOrCreateThread({ schoolId, type, participantIds, studentId = null }) {
+    const sortedParticipants = [...participantIds].sort();
+    const query = {
+        type,
+        participantIds: { $all: sortedParticipants, $size: sortedParticipants.length },
+        studentId: studentId || null
+    };
+    let thread = await db.collection('chatThreads').findOne(query);
+    if (!thread) {
+        const doc = {
+            schoolId, type, participantIds: sortedParticipants,
+            studentId: studentId || null,
+            createdAt: new Date(),
+            lastMessageAt: new Date(),
+            lastMessage: null,
+            lastMessageSender: null,
+            lastReadAt: {}
+        };
+        const result = await db.collection('chatThreads').insertOne(doc);
+        thread = { ...doc, _id: result.insertedId };
+    }
+    return thread;
+}
+
+function isThreadParticipant(thread, userId) {
+    return Array.isArray(thread.participantIds) && thread.participantIds.includes(userId);
+}
+
 // --- Maintenance mode gate (applies to everything below this point) ---
 app.use((req, res, next) => {
     const exempt = req.path === '/api/login' ||
@@ -388,7 +422,7 @@ app.post('/api/owner/admins/upsert', requireAuth, requireRole('owner'), async (r
         }
         const result = await db.collection('users').updateOne(
             { studentId: id, role: "admin" },
-            { $set: updateData },
+            { $set: updateData, $setOnInsert: { createdAt: new Date() } },
             { upsert: true }
         );
         await logAudit(req, 'admin_upsert', { targetId: id, schoolId });
@@ -456,7 +490,7 @@ app.post('/api/admin/teachers/upsert', requireAuth, requireRole('admin'), async 
         }
         const result = await db.collection('users').updateOne(
             { studentId: id, role: "teacher", schoolId },
-            { $set: updateData },
+            { $set: updateData, $setOnInsert: { createdAt: new Date() } },
             { upsert: true }
         );
         await logAudit(req, 'teacher_upsert', { targetId: id });
@@ -520,7 +554,7 @@ app.post('/api/admin/parents/upsert', requireAuth, requireRole('admin'), async (
         }
         const result = await db.collection('users').updateOne(
             { studentId: id, role: "parent", schoolId },
-            { $set: updateData },
+            { $set: updateData, $setOnInsert: { createdAt: new Date() } },
             { upsert: true }
         );
         await logAudit(req, 'parent_upsert', { targetId: id, linkedStudentIds });
@@ -607,6 +641,7 @@ app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teac
                 $set: updateData,
                 $setOnInsert: {
                     feesPaid: 0,
+                    createdAt: new Date(),
                     performance: { academic: 0, tech: 0, arts: 0, sports: 0, practical: 0, feedback: "Welcome to ADIS!" }
                 }
             },
@@ -1028,6 +1063,287 @@ app.put('/api/feedback/:id/status', requireAuth, requireRole('admin', 'teacher')
     } catch (e) {
         console.error(e);
         res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// =======================================================================
+// CHAT (Phase 2C)
+// Polling-based threads, deliberately not sockets — same reasoning as the
+// notifications system: reuses a proven pattern, ships faster, and can be
+// swapped for Socket.io later without touching the data model.
+//
+// Who can talk to whom (enforced in /start below):
+//   teacher <-> parent   (scoped to one shared student)
+//   admin   <-> teacher  (same school)
+//   owner   <-> admin    (any school)
+// =======================================================================
+
+// Role-aware address book: who am I allowed to start a new chat with?
+app.get('/api/chat/contacts', requireAuth, async (req, res) => {
+    try {
+        const user = req.currentUser;
+        const schoolId = user.schoolId;
+
+        if (user.role === 'teacher') {
+            const admins = await db.collection('users').find(
+                { role: 'admin', schoolId }, { projection: { name: 1, studentId: 1 } }
+            ).toArray();
+            const students = await db.collection('users').find(
+                { role: 'student', schoolId, classId: user.classId }, { projection: { studentId: 1, name: 1 } }
+            ).toArray();
+            const studentIds = students.map(s => s.studentId);
+            const parents = await db.collection('users').find(
+                { role: 'parent', schoolId, linkedStudentIds: { $in: studentIds } },
+                { projection: { name: 1, studentId: 1, linkedStudentIds: 1 } }
+            ).toArray();
+            const parentContacts = [];
+            parents.forEach(p => {
+                (p.linkedStudentIds || []).filter(sid => studentIds.includes(sid)).forEach(sid => {
+                    const student = students.find(s => s.studentId === sid);
+                    parentContacts.push({ id: p.studentId, name: p.name, studentId: sid, studentName: student ? student.name : sid });
+                });
+            });
+            return res.json({ admins: admins.map(a => ({ id: a.studentId, name: a.name })), parents: parentContacts });
+        }
+
+        if (user.role === 'parent') {
+            const students = await db.collection('users').find(
+                { studentId: { $in: user.linkedStudentIds || [] }, role: 'student', schoolId },
+                { projection: { studentId: 1, name: 1, classId: 1 } }
+            ).toArray();
+            const contacts = [];
+            for (const s of students) {
+                const teachers = await db.collection('users').find(
+                    { role: 'teacher', schoolId, classId: s.classId }, { projection: { studentId: 1, name: 1 } }
+                ).toArray();
+                teachers.forEach(t => contacts.push({ id: t.studentId, name: t.name, studentId: s.studentId, studentName: s.name }));
+            }
+            return res.json({ teachers: contacts });
+        }
+
+        if (user.role === 'admin') {
+            const teachers = await db.collection('users').find(
+                { role: 'teacher', schoolId }, { projection: { studentId: 1, name: 1 } }
+            ).toArray();
+            const owner = await db.collection('users').findOne({ role: 'owner' }, { projection: { studentId: 1, name: 1 } });
+            return res.json({
+                teachers: teachers.map(t => ({ id: t.studentId, name: t.name })),
+                owner: owner ? { id: owner.studentId, name: owner.name } : null
+            });
+        }
+
+        if (user.role === 'owner') {
+            const admins = await db.collection('users').find(
+                { role: 'admin' }, { projection: { studentId: 1, name: 1, schoolId: 1 } }
+            ).toArray();
+            const schools = await db.collection('schools').find({}).toArray();
+            const nameById = Object.fromEntries(schools.map(s => [s.schoolId, s.name]));
+            return res.json({
+                admins: admins.map(a => ({ id: a.studentId, name: a.name, schoolName: nameById[a.schoolId] || a.schoolId }))
+            });
+        }
+
+        res.json({});
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({});
+    }
+});
+
+app.post('/api/chat/threads/start', requireAuth, async (req, res) => {
+    try {
+        const user = req.currentUser;
+        const { otherPartyId, studentId } = req.body;
+        if (!otherPartyId) return res.status(400).json({ success: false, message: "otherPartyId is required." });
+        if (otherPartyId === user.studentId) return res.status(400).json({ success: false, message: "You can't message yourself." });
+
+        const other = await db.collection('users').findOne({ studentId: otherPartyId });
+        if (!other) return res.status(404).json({ success: false, message: "User not found." });
+
+        let type, schoolId, threadStudentId = null;
+
+        if ((user.role === 'teacher' && other.role === 'parent') || (user.role === 'parent' && other.role === 'teacher')) {
+            const teacher = user.role === 'teacher' ? user : other;
+            const parent = user.role === 'parent' ? user : other;
+            if (!studentId) return res.status(400).json({ success: false, message: "studentId is required for a teacher-parent chat." });
+            if (!Array.isArray(parent.linkedStudentIds) || !parent.linkedStudentIds.includes(studentId)) {
+                return res.status(403).json({ success: false, message: "That parent isn't linked to this student." });
+            }
+            const student = await db.collection('users').findOne({ studentId, role: 'student' });
+            if (!student || student.schoolId !== teacher.schoolId || student.classId !== teacher.classId) {
+                return res.status(403).json({ success: false, message: "That teacher doesn't teach this student's class." });
+            }
+            type = 'teacher-parent'; schoolId = teacher.schoolId; threadStudentId = studentId;
+        } else if ((user.role === 'admin' && other.role === 'teacher') || (user.role === 'teacher' && other.role === 'admin')) {
+            if (user.schoolId !== other.schoolId) {
+                return res.status(403).json({ success: false, message: "That teacher/admin isn't in your school." });
+            }
+            type = 'admin-teacher'; schoolId = user.schoolId;
+        } else if ((user.role === 'owner' && other.role === 'admin') || (user.role === 'admin' && other.role === 'owner')) {
+            type = 'owner-admin'; schoolId = other.role === 'admin' ? other.schoolId : user.schoolId;
+        } else {
+            return res.status(403).json({ success: false, message: "That conversation isn't allowed." });
+        }
+
+        const thread = await findOrCreateThread({
+            schoolId, type, participantIds: [user.studentId, other.studentId], studentId: threadStudentId
+        });
+        res.json({ success: true, thread });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// My conversations, enriched with the other party's name and an unread flag.
+app.get('/api/chat/threads', requireAuth, async (req, res) => {
+    try {
+        const userId = req.currentUser.studentId;
+        const threads = await db.collection('chatThreads').find({ participantIds: userId }).sort({ lastMessageAt: -1 }).toArray();
+
+        const otherIds = [...new Set(threads.map(t => t.participantIds.find(p => p !== userId)).filter(Boolean))];
+        const studentIds = [...new Set(threads.filter(t => t.studentId).map(t => t.studentId))];
+        const others = await db.collection('users').find({ studentId: { $in: otherIds } }, { projection: { studentId: 1, name: 1, role: 1 } }).toArray();
+        const otherById = Object.fromEntries(others.map(o => [o.studentId, o]));
+        const students = await db.collection('users').find({ studentId: { $in: studentIds } }, { projection: { studentId: 1, name: 1 } }).toArray();
+        const studentById = Object.fromEntries(students.map(s => [s.studentId, s]));
+
+        const enriched = threads.map(t => {
+            const otherId = t.participantIds.find(p => p !== userId);
+            const other = otherById[otherId];
+            const lastRead = t.lastReadAt && t.lastReadAt[userId] ? new Date(t.lastReadAt[userId]) : null;
+            const unread = !!t.lastMessageAt && t.lastMessageSender !== userId && (!lastRead || new Date(t.lastMessageAt) > lastRead);
+            return {
+                _id: t._id, type: t.type, studentId: t.studentId,
+                studentName: t.studentId ? (studentById[t.studentId] ? studentById[t.studentId].name : null) : null,
+                otherPartyId: otherId, otherPartyName: other ? other.name : 'Unknown', otherPartyRole: other ? other.role : null,
+                lastMessage: t.lastMessage, lastMessageAt: t.lastMessageAt, unread
+            };
+        });
+        res.json(enriched);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
+app.get('/api/chat/threads/:id/messages', requireAuth, async (req, res) => {
+    try {
+        const thread = await db.collection('chatThreads').findOne({ _id: new ObjectId(req.params.id) });
+        if (!thread) return res.status(404).json({ success: false, message: "Thread not found." });
+        if (!isThreadParticipant(thread, req.currentUser.studentId)) {
+            return res.status(403).json({ success: false, message: "Not a participant in this thread." });
+        }
+        const messages = await db.collection('chatMessages').find({ threadId: thread._id }).sort({ date: 1 }).toArray();
+        await db.collection('chatThreads').updateOne(
+            { _id: thread._id },
+            { $set: { [`lastReadAt.${req.currentUser.studentId}`]: new Date() } }
+        );
+        res.json(messages);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
+app.post('/api/chat/threads/:id/messages', requireAuth, async (req, res) => {
+    try {
+        const { message } = req.body;
+        if (!message || !message.trim()) return res.status(400).json({ success: false, message: "Message is required." });
+
+        const thread = await db.collection('chatThreads').findOne({ _id: new ObjectId(req.params.id) });
+        if (!thread) return res.status(404).json({ success: false, message: "Thread not found." });
+        if (!isThreadParticipant(thread, req.currentUser.studentId)) {
+            return res.status(403).json({ success: false, message: "Not a participant in this thread." });
+        }
+
+        const doc = {
+            threadId: thread._id, schoolId: thread.schoolId,
+            senderId: req.currentUser.studentId, senderRole: req.currentUser.role,
+            message: message.trim(), date: new Date()
+        };
+        await db.collection('chatMessages').insertOne(doc);
+        await db.collection('chatThreads').updateOne(
+            { _id: thread._id },
+            {
+                $set: {
+                    lastMessage: doc.message.slice(0, 140),
+                    lastMessageAt: doc.date,
+                    lastMessageSender: req.currentUser.studentId,
+                    [`lastReadAt.${req.currentUser.studentId}`]: doc.date
+                }
+            }
+        );
+
+        const recipientId = thread.participantIds.find(p => p !== req.currentUser.studentId);
+        if (recipientId) {
+            notifyUser(thread.schoolId, recipientId, 'chat', `New message from ${req.currentUser.name}.`);
+        }
+        res.json({ success: true, messageDoc: doc });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// =======================================================================
+// OVERSIGHT (Phase 2C — the transparency layer)
+// Read access, not write access: a supervisor can see every thread one
+// level below them but can't post into a thread they aren't a
+// participant in. Same trust model as the rest of the app — admin is
+// auto-scoped to their own schoolId, owner is unscoped.
+// =======================================================================
+app.get('/api/oversight/threads', requireAuth, requireRole('admin', 'owner'), async (req, res) => {
+    try {
+        const user = req.currentUser;
+        const query = { type: { $in: ['teacher-parent', 'admin-teacher'] } };
+        if (user.role === 'admin') query.schoolId = user.schoolId;
+
+        const threads = await db.collection('chatThreads').find(query).sort({ lastMessageAt: -1 }).toArray();
+        const participantIds = [...new Set(threads.flatMap(t => t.participantIds))];
+        const studentIds = [...new Set(threads.filter(t => t.studentId).map(t => t.studentId))];
+
+        const people = await db.collection('users').find({ studentId: { $in: participantIds } }, { projection: { studentId: 1, name: 1, role: 1 } }).toArray();
+        const peopleById = Object.fromEntries(people.map(p => [p.studentId, p]));
+        const students = await db.collection('users').find({ studentId: { $in: studentIds } }, { projection: { studentId: 1, name: 1 } }).toArray();
+        const studentById = Object.fromEntries(students.map(s => [s.studentId, s]));
+
+        let schoolNameById = {};
+        if (user.role === 'owner') {
+            const schools = await db.collection('schools').find({}).toArray();
+            schoolNameById = Object.fromEntries(schools.map(s => [s.schoolId, s.name]));
+        }
+
+        const enriched = threads.map(t => ({
+            _id: t._id, type: t.type, schoolId: t.schoolId,
+            schoolName: schoolNameById[t.schoolId] || undefined,
+            studentName: t.studentId ? (studentById[t.studentId] ? studentById[t.studentId].name : null) : null,
+            participants: t.participantIds.map(id => ({ id, name: peopleById[id] ? peopleById[id].name : 'Unknown', role: peopleById[id] ? peopleById[id].role : null })),
+            lastMessage: t.lastMessage, lastMessageAt: t.lastMessageAt
+        }));
+        res.json(enriched);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
+app.get('/api/oversight/threads/:id/messages', requireAuth, requireRole('admin', 'owner'), async (req, res) => {
+    try {
+        const thread = await db.collection('chatThreads').findOne({ _id: new ObjectId(req.params.id) });
+        if (!thread) return res.status(404).json({ success: false, message: "Thread not found." });
+        if (!['teacher-parent', 'admin-teacher'].includes(thread.type)) {
+            return res.status(403).json({ success: false, message: "Not within oversight scope." });
+        }
+        if (req.currentUser.role === 'admin' && thread.schoolId !== req.currentUser.schoolId) {
+            return res.status(403).json({ success: false, message: "Not within oversight scope." });
+        }
+        const messages = await db.collection('chatMessages').find({ threadId: thread._id }).sort({ date: 1 }).toArray();
+        await logAudit(req, 'oversight_view', { threadId: req.params.id, type: thread.type });
+        res.json(messages);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
     }
 });
 

@@ -36,6 +36,11 @@
     let touchStartX = 0; 
     let touchEndX = 0;
     let notifPollInterval = null;
+    let chatBadgePollInterval = null;
+    let chatMessagePoll = null;
+    let currentThreadId = null;
+    let currentThreads = [];
+    let currentOversightThreads = [];
 
     // ==========================================
     // START: MINI-SNOWFLAKE AUTO-GENERATOR SETUP
@@ -208,6 +213,12 @@
         loadNotifications();
         if (notifPollInterval) clearInterval(notifPollInterval);
         notifPollInterval = setInterval(loadNotifications, 30000);
+
+        if (['teacher', 'admin', 'parent', 'owner'].includes(user.role)) {
+            loadChatBadge();
+            if (chatBadgePollInterval) clearInterval(chatBadgePollInterval);
+            chatBadgePollInterval = setInterval(loadChatBadge, 30000);
+        }
     }
 
     function logout() {
@@ -215,6 +226,9 @@
         // so a stolen/old session token can't keep working.
         authFetch('/api/logout', { method: 'POST' }).catch(() => {});
         localStorage.removeItem('currentUser');
+        if (notifPollInterval) clearInterval(notifPollInterval);
+        if (chatBadgePollInterval) clearInterval(chatBadgePollInterval);
+        if (chatMessagePoll) clearInterval(chatMessagePoll);
         location.reload();
     }
 
@@ -256,10 +270,11 @@
             'admin-teachers': 'nav-manage', 
             'attendance': 'nav-att', 
             'fees': 'nav-fees', 
-            'study-material': 'nav-mat' 
+            'study-material': 'nav-mat',
+            'chat-hub': 'nav-chats'
         };
 
-        if(navMap[id]) document.getElementById(navMap[id]).classList.add('active');
+        if(navMap[id] && document.getElementById(navMap[id])) document.getElementById(navMap[id]).classList.add('active');
 
         if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
         if (id === 'admin-teachers') { loadClassDropdown(); loadTeachers(); loadClassesForManagement(); }
@@ -270,6 +285,8 @@
         if (id === 'parent-panel') loadParentChildren();
         if (id === 'feedback-inbox') loadFeedbackInbox();
         if (id === 'admin-teachers') loadParents();
+        if (id === 'chat-hub') loadChatHub();
+        if (id === 'oversight-panel') loadOversightPanel();
 
         if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
@@ -1390,6 +1407,222 @@ function clearAppData() {
         });
         const result = await res.json();
         if (result.success) loadFeedbackInbox(); else alert(result.message || "Update failed.");
+    }
+
+    // ==========================================
+    // CHAT (Phase 2C)
+    // ==========================================
+    function escapeHtml(str) {
+        return (str || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function loadChatBadge() {
+        try {
+            const res = await authFetch('/api/chat/threads');
+            if (!res.ok) return;
+            const threads = await res.json();
+            const unread = threads.filter(t => t.unread).length;
+            const badge = document.getElementById('chat-badge');
+            if (badge) {
+                badge.style.display = unread > 0 ? 'inline-block' : 'none';
+                badge.innerText = unread > 9 ? '9+' : unread;
+            }
+        } catch (e) {}
+    }
+
+    async function loadChatHub() {
+        closeChatThread(true);
+        await loadChatContacts();
+        await loadChatThreadList();
+    }
+
+    async function loadChatContacts() {
+        const container = document.getElementById('chat-new-contacts');
+        container.innerHTML = "Loading contacts...";
+        try {
+            const res = await authFetch('/api/chat/contacts');
+            const data = await res.json();
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            let options = [];
+            if (user.role === 'teacher') {
+                options = [
+                    ...(data.admins || []).map(a => ({ label: `Admin: ${a.name}`, otherPartyId: a.id })),
+                    ...(data.parents || []).map(p => ({ label: `${p.name} — parent of ${p.studentName}`, otherPartyId: p.id, studentId: p.studentId }))
+                ];
+            } else if (user.role === 'parent') {
+                options = (data.teachers || []).map(t => ({ label: `${t.name} — ${t.studentName}'s teacher`, otherPartyId: t.id, studentId: t.studentId }));
+            } else if (user.role === 'admin') {
+                options = [
+                    ...(data.teachers || []).map(t => ({ label: `Teacher: ${t.name}`, otherPartyId: t.id })),
+                    ...(data.owner ? [{ label: `Owner: ${data.owner.name}`, otherPartyId: data.owner.id }] : [])
+                ];
+            } else if (user.role === 'owner') {
+                options = (data.admins || []).map(a => ({ label: `${a.name} (${a.schoolName})`, otherPartyId: a.id }));
+            }
+
+            if (options.length === 0) {
+                container.innerHTML = `<p class="text-muted small">No contacts available to message yet.</p>`;
+                window._chatContactOptions = [];
+                return;
+            }
+            window._chatContactOptions = options;
+            container.innerHTML = `
+                <div class="card p-2 mb-2">
+                    <label class="small mb-1">Start a new chat</label>
+                    <select id="chat-new-contact-select" class="form-select form-select-sm mb-2">
+                        ${options.map((o, i) => `<option value="${i}">${escapeHtml(o.label)}</option>`).join('')}
+                    </select>
+                    <button class="btn btn-sm btn-primary w-100" onclick="startNewChat()">Start Chat</button>
+                </div>`;
+        } catch (e) {
+            container.innerHTML = `<p class="text-muted small">Couldn't load contacts.</p>`;
+        }
+    }
+
+    async function startNewChat() {
+        const select = document.getElementById('chat-new-contact-select');
+        const option = (window._chatContactOptions || [])[select ? select.value : -1];
+        if (!option) return;
+        try {
+            const res = await authFetch('/api/chat/threads/start', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ otherPartyId: option.otherPartyId, studentId: option.studentId || null })
+            });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't start chat.");
+            await loadChatThreadList();
+            openChatThread(result.thread._id);
+        } catch (e) { alert("Couldn't start chat."); }
+    }
+
+    async function loadChatThreadList() {
+        const container = document.getElementById('chat-thread-list');
+        container.innerHTML = "Loading...";
+        try {
+            const res = await authFetch('/api/chat/threads');
+            const threads = await res.json();
+            currentThreads = threads;
+            if (threads.length === 0) { container.innerHTML = `<p class="text-muted small">No conversations yet.</p>`; return; }
+            container.innerHTML = threads.map(t => `
+                <div class="card p-2 mb-2" style="cursor:pointer;" onclick="openChatThread('${t._id}')">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <span class="${t.unread ? 'fw-bold' : ''}">${escapeHtml(t.otherPartyName)}${t.studentName ? ` <span class="text-muted small">(re: ${escapeHtml(t.studentName)})</span>` : ''}</span>
+                        ${t.unread ? '<span class="badge bg-danger">new</span>' : ''}
+                    </div>
+                    <div class="text-muted small">${t.lastMessage ? escapeHtml(t.lastMessage) : 'No messages yet'}</div>
+                </div>
+            `).join('');
+        } catch (e) { container.innerHTML = "Error loading conversations."; }
+    }
+
+    async function openChatThread(id) {
+        currentThreadId = id;
+        const thread = currentThreads.find(t => t._id === id);
+        document.getElementById('chat-new-contacts').style.display = 'none';
+        document.getElementById('chat-thread-list').style.display = 'none';
+        document.getElementById('chat-thread-view').style.display = 'block';
+        document.getElementById('chat-thread-title').innerText = thread ? thread.otherPartyName : 'Chat';
+        document.getElementById('chat-thread-sub').innerText = thread && thread.studentName ? `Regarding ${thread.studentName}` : '';
+        await loadChatMessages();
+        if (chatMessagePoll) clearInterval(chatMessagePoll);
+        chatMessagePoll = setInterval(loadChatMessages, 8000);
+    }
+
+    function closeChatThread(skipReload) {
+        currentThreadId = null;
+        if (chatMessagePoll) clearInterval(chatMessagePoll);
+        const view = document.getElementById('chat-thread-view');
+        if (view) view.style.display = 'none';
+        const contacts = document.getElementById('chat-new-contacts');
+        if (contacts) contacts.style.display = 'block';
+        const list = document.getElementById('chat-thread-list');
+        if (list) list.style.display = 'block';
+        if (!skipReload) { loadChatThreadList(); loadChatBadge(); }
+    }
+
+    async function loadChatMessages() {
+        if (!currentThreadId) return;
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const box = document.getElementById('chat-messages');
+        try {
+            const res = await authFetch(`/api/chat/threads/${currentThreadId}/messages`);
+            const messages = await res.json();
+            box.innerHTML = messages.map(m => `
+                <div class="chat-bubble ${m.senderId === user.id ? 'chat-bubble-mine' : 'chat-bubble-theirs'}">
+                    <div>${escapeHtml(m.message)}</div>
+                    <div class="chat-bubble-time">${new Date(m.date).toLocaleString()}</div>
+                </div>
+            `).join('');
+            box.scrollTop = box.scrollHeight;
+        } catch (e) {}
+    }
+
+    async function sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const message = input.value.trim();
+        if (!message || !currentThreadId) return;
+        input.value = '';
+        try {
+            const res = await authFetch(`/api/chat/threads/${currentThreadId}/messages`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ message })
+            });
+            const result = await res.json();
+            if (!result.success) { alert(result.message || "Couldn't send message."); return; }
+            loadChatMessages();
+        } catch (e) { alert("Couldn't send message."); }
+    }
+
+    // ==========================================
+    // OVERSIGHT (Phase 2C — read-only monitor views)
+    // ==========================================
+    async function loadOversightPanel() {
+        closeOversightThread();
+        const container = document.getElementById('oversight-thread-list');
+        container.innerHTML = "Loading...";
+        try {
+            const res = await authFetch('/api/oversight/threads');
+            const threads = await res.json();
+            currentOversightThreads = threads;
+            if (threads.length === 0) { container.innerHTML = `<p class="text-muted small">No conversations yet.</p>`; return; }
+            container.innerHTML = threads.map(t => `
+                <div class="card p-2 mb-2" style="cursor:pointer;" onclick="openOversightThread('${t._id}')">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <span>${t.participants.map(p => escapeHtml(p.name)).join(' ↔ ')}</span>
+                        <span class="badge bg-secondary">${t.type.replace('-', ' ↔ ')}</span>
+                    </div>
+                    ${t.studentName ? `<div class="text-muted small">Re: ${escapeHtml(t.studentName)}</div>` : ''}
+                    ${t.schoolName ? `<div class="text-muted small">${escapeHtml(t.schoolName)}</div>` : ''}
+                    <div class="text-muted small">${t.lastMessage ? escapeHtml(t.lastMessage) : 'No messages yet'}</div>
+                </div>
+            `).join('');
+        } catch (e) { container.innerHTML = "Error loading conversations."; }
+    }
+
+    async function openOversightThread(id) {
+        const thread = currentOversightThreads.find(t => t._id === id);
+        document.getElementById('oversight-thread-list').style.display = 'none';
+        document.getElementById('oversight-thread-view').style.display = 'block';
+        document.getElementById('oversight-thread-title').innerText = thread ? thread.participants.map(p => p.name).join(' ↔ ') : 'Conversation';
+        document.getElementById('oversight-thread-sub').innerText = thread && thread.studentName
+            ? `Regarding ${thread.studentName}` : (thread && thread.schoolName ? thread.schoolName : '');
+        try {
+            const res = await authFetch(`/api/oversight/threads/${id}/messages`);
+            const messages = await res.json();
+            document.getElementById('oversight-messages').innerHTML = messages.map(m => `
+                <div class="chat-bubble chat-bubble-theirs">
+                    <div class="small text-muted">${escapeHtml(m.senderRole)}</div>
+                    <div>${escapeHtml(m.message)}</div>
+                    <div class="chat-bubble-time">${new Date(m.date).toLocaleString()}</div>
+                </div>
+            `).join('');
+        } catch (e) {}
+    }
+
+    function closeOversightThread() {
+        const view = document.getElementById('oversight-thread-view');
+        if (view) view.style.display = 'none';
+        const list = document.getElementById('oversight-thread-list');
+        if (list) list.style.display = 'block';
     }
 
     // ==========================================

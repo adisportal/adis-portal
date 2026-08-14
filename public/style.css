@@ -341,6 +341,25 @@ small.text-muted, .role-badge, #user-display-id, #user-display-class {
     border-image: linear-gradient(90deg, var(--amber-wash) 0%, transparent 70%) 1;
 }
 
+/* Chat threads (Phase 2C) */
+.chat-messages-box {
+    max-height: 55vh; overflow-y: auto; padding: 10px;
+    background: var(--cloud-dim); border-radius: 10px; border: 1px solid var(--line);
+}
+.chat-bubble {
+    max-width: 80%; padding: 8px 12px; border-radius: 14px; margin-bottom: 8px;
+    font-size: 0.9rem; word-wrap: break-word;
+}
+.chat-bubble-mine {
+    background: var(--ink); color: white; margin-left: auto; border-bottom-right-radius: 3px;
+}
+.chat-bubble-theirs {
+    background: var(--paper); border: 1px solid var(--line); color: var(--ink); border-bottom-left-radius: 3px;
+}
+.chat-bubble-time {
+    font-size: 0.65rem; opacity: 0.65; margin-top: 2px; font-family: var(--font-mono);
+}
+
 @media (prefers-reduced-motion: reduce) {
     *, .section-panel, .loader { animation: none !important; transition: none !important; }
 }
