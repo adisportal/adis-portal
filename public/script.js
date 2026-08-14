@@ -35,6 +35,7 @@
 
     let touchStartX = 0; 
     let touchEndX = 0;
+    let notifPollInterval = null;
 
     // ==========================================
     // START: MINI-SNOWFLAKE AUTO-GENERATOR SETUP
@@ -203,6 +204,10 @@
 
         // ⬇️ ADD THIS LINE TO LOAD DROPDOWNS ON LOG IN 
         loadClassDropdown();
+
+        loadNotifications();
+        if (notifPollInterval) clearInterval(notifPollInterval);
+        notifPollInterval = setInterval(loadNotifications, 30000);
     }
 
     function logout() {
@@ -230,6 +235,7 @@
         if(role === 'owner') { showSection('owner-panel', 'Owner Panel'); loadOwnerDashboard(); }
         else if(role === 'admin') showSection('admin-teachers', 'Admin Panel');
         else if(role === 'teacher') showSection('staff-students', 'Manage Students');
+        else if(role === 'parent') showSection('parent-panel', 'My Children');
         else showSection('announcements', 'Home');
     }
 
@@ -260,6 +266,9 @@
         if (id === 'fees') loadFees();
         if (id === 'study-material') loadMaterials();
         if (id === 'staff-students') { loadClassDropdown(); loadClassStudents(); }
+        if (id === 'parent-panel') loadParentChildren();
+        if (id === 'feedback-inbox') loadFeedbackInbox();
+        if (id === 'admin-teachers') loadParents();
 
         if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
@@ -1160,4 +1169,267 @@ function clearAppData() {
         await authFetch(`/api/announcements/${id}`, { method: 'DELETE' });
         loadAnnouncements();
     }
- 
+
+    // ==========================================
+    // ADMIN: PARENT ACCOUNTS
+    // ==========================================
+    async function addOrUpdateParent(btn) {
+        const data = {
+            id: document.getElementById('p-id').value.trim(),
+            name: document.getElementById('p-name').value.trim(),
+            password: document.getElementById('p-pass').value,
+            linkedStudentIds: document.getElementById('p-students').value.split(',').map(s => s.trim()).filter(Boolean)
+        };
+        if (!data.id || !data.name || data.linkedStudentIds.length === 0) return alert("Parent ID, name, and at least one student ID are required.");
+
+        btn.disabled = true;
+        try {
+            const res = await authFetch('/api/admin/parents/upsert', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) {
+                document.getElementById('p-name').value = '';
+                document.getElementById('p-id').value = '';
+                document.getElementById('p-pass').value = '';
+                document.getElementById('p-students').value = '';
+                loadParents();
+            }
+        } finally { btn.disabled = false; }
+    }
+
+    async function loadParents() {
+        const container = document.getElementById('parents-list-container');
+        if (!container) return;
+        container.innerHTML = "Loading...";
+        try {
+            const res = await authFetch('/api/admin/parents');
+            const parents = await res.json();
+            if (parents.length === 0) { container.innerHTML = "No parent accounts yet."; return; }
+            container.innerHTML = parents.map(p => `
+                <div class="card p-2 mb-2 d-flex justify-content-between align-items-center flex-row">
+                    <div>
+                        <strong>${p.name}</strong> <span class="text-muted small">(${p.studentId})</span><br>
+                        <small class="text-muted">Linked: ${(p.linkedStudentIds || []).join(', ')}</small>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteParent('${p.studentId}')">Delete</button>
+                </div>
+            `).join('');
+        } catch (e) { container.innerHTML = "Error loading parents."; }
+    }
+
+    async function deleteParent(id) {
+        if (!confirm("Delete this parent account?")) return;
+        await authFetch(`/api/admin/parents/${id}`, { method: 'DELETE' });
+        loadParents();
+    }
+
+    // ==========================================
+    // PARENT: MY CHILDREN PANEL
+    // ==========================================
+    let parentChildren = [];
+    let selectedChildId = null;
+
+    async function loadParentChildren() {
+        const selector = document.getElementById('parent-child-selector');
+        const details = document.getElementById('parent-child-details');
+        selector.innerHTML = "Loading...";
+        details.innerHTML = "";
+        try {
+            const res = await authFetch('/api/parent/children');
+            parentChildren = await res.json();
+            if (parentChildren.length === 0) {
+                selector.innerHTML = "";
+                details.innerHTML = `<p class="text-muted">No child linked to this account yet — contact the school admin.</p>`;
+                return;
+            }
+            if (parentChildren.length > 1) {
+                selector.innerHTML = `
+                    <select class="form-select" onchange="selectChild(this.value)">
+                        ${parentChildren.map(c => `<option value="${c.studentId}">${c.name} (${c.classId || 'N/A'})</option>`).join('')}
+                    </select>`;
+            } else {
+                selector.innerHTML = "";
+            }
+            selectChild(parentChildren[0].studentId);
+        } catch (e) { selector.innerHTML = ""; details.innerHTML = "Error loading child data."; }
+
+        loadParentFeedbackHistory();
+    }
+
+    function selectChild(studentId) {
+        selectedChildId = studentId;
+        const child = parentChildren.find(c => c.studentId === studentId);
+        const details = document.getElementById('parent-child-details');
+        if (!child) return;
+        const remaining = (child.totalFees || 0) - (child.feesPaid || 0);
+        const perf = child.performance || {};
+        details.innerHTML = `
+            <div class="card p-3 mb-3">
+                <h5 class="fw-bold mb-1">${child.name}</h5>
+                <p class="text-muted small mb-2">Class: ${child.classId || 'N/A'} &middot; ID: ${child.studentId}</p>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Fees Remaining:</span><strong>₹${remaining}</strong>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span>Feedback / Notes:</span><span class="text-muted">${perf.feedback || 'N/A'}</span>
+                </div>
+            </div>`;
+        loadChildAttendanceSummary(studentId, details);
+    }
+
+    async function loadChildAttendanceSummary(studentId, details) {
+        try {
+            const res = await authFetch(`/api/student/attendance/${studentId}`);
+            const records = await res.json();
+            const present = records.filter(r => r.status === 'Present').length;
+            const total = records.length;
+            const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+            details.innerHTML += `
+                <div class="card p-3">
+                    <h6>Attendance</h6>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar" style="width:${pct}%;">${pct}%</div>
+                    </div>
+                    <small class="text-muted">${present} present out of ${total} recorded days</small>
+                </div>`;
+        } catch (e) {}
+    }
+
+    // ==========================================
+    // FEEDBACK
+    // ==========================================
+    async function submitFeedback(btn) {
+        const category = document.getElementById('fb-category').value;
+        const message = document.getElementById('fb-message').value.trim();
+        if (!message) return alert("Please write a message.");
+        btn.disabled = true;
+        try {
+            const res = await authFetch('/api/feedback', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ studentId: selectedChildId, category, message })
+            });
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) {
+                document.getElementById('fb-message').value = '';
+                loadParentFeedbackHistory();
+            }
+        } finally { btn.disabled = false; }
+    }
+
+    function feedbackStatusBadge(status) {
+        const map = { open: 'bg-warning text-dark', in_review: 'bg-info text-dark', resolved: 'bg-success' };
+        return `<span class="badge ${map[status] || 'bg-secondary'}">${(status || '').replace('_',' ')}</span>`;
+    }
+
+    async function loadParentFeedbackHistory() {
+        const container = document.getElementById('parent-feedback-list');
+        if (!container) return;
+        container.innerHTML = "Loading...";
+        try {
+            const res = await authFetch('/api/feedback');
+            const items = await res.json();
+            if (items.length === 0) { container.innerHTML = "No feedback submitted yet."; return; }
+            container.innerHTML = items.map(f => `
+                <div class="card p-2 mb-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <strong class="small">${f.category}</strong> ${feedbackStatusBadge(f.status)}
+                    </div>
+                    <p class="mb-1 small">${f.message}</p>
+                    ${f.response ? `<p class="mb-0 small text-muted"><strong>School:</strong> ${f.response}</p>` : ''}
+                    <small class="text-muted">${new Date(f.date).toLocaleDateString()}</small>
+                </div>
+            `).join('');
+        } catch (e) { container.innerHTML = "Error loading feedback."; }
+    }
+
+    async function loadFeedbackInbox() {
+        const container = document.getElementById('feedback-inbox-list');
+        container.innerHTML = "Loading...";
+        try {
+            const res = await authFetch('/api/feedback');
+            const items = await res.json();
+            if (items.length === 0) { container.innerHTML = "No feedback received yet."; return; }
+            container.innerHTML = items.map(f => `
+                <div class="card p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>${f.category}</strong> <span class="text-muted small">from ${f.fromName} (re: ${f.studentId})</span>
+                        </div>
+                        ${feedbackStatusBadge(f.status)}
+                    </div>
+                    <p class="mt-2 mb-2">${f.message}</p>
+                    ${f.response ? `<p class="small text-muted mb-2"><strong>Your response:</strong> ${f.response}</p>` : ''}
+                    <div class="row g-2">
+                        <div class="col-8">
+                            <input type="text" class="form-control form-control-sm" id="fb-resp-${f._id}" placeholder="Write a response (optional)">
+                        </div>
+                        <div class="col-4">
+                            <select class="form-select form-select-sm" id="fb-status-${f._id}">
+                                <option value="open" ${f.status === 'open' ? 'selected' : ''}>Open</option>
+                                <option value="in_review" ${f.status === 'in_review' ? 'selected' : ''}>In Review</option>
+                                <option value="resolved" ${f.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary w-100 mt-2" onclick="updateFeedbackStatus('${f._id}')">Save</button>
+                </div>
+            `).join('');
+        } catch (e) { container.innerHTML = "Error loading feedback."; }
+    }
+
+    async function updateFeedbackStatus(id) {
+        const status = document.getElementById(`fb-status-${id}`).value;
+        const response = document.getElementById(`fb-resp-${id}`).value;
+        const res = await authFetch(`/api/feedback/${id}/status`, {
+            method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ status, response })
+        });
+        const result = await res.json();
+        if (result.success) loadFeedbackInbox(); else alert(result.message || "Update failed.");
+    }
+
+    // ==========================================
+    // NOTIFICATIONS (polled every 30s, see activateApp)
+    // ==========================================
+    async function loadNotifications() {
+        try {
+            const res = await authFetch('/api/notifications');
+            if (!res.ok) return;
+            const items = await res.json();
+            const unread = items.filter(n => !n.read).length;
+            const badge = document.getElementById('notif-badge');
+            if (badge) {
+                badge.style.display = unread > 0 ? 'inline-block' : 'none';
+                badge.innerText = unread > 9 ? '9+' : unread;
+            }
+            const list = document.getElementById('notif-list');
+            if (list) {
+                list.innerHTML = items.length === 0
+                    ? `<p class="text-muted small text-center m-0">No notifications yet.</p>`
+                    : items.map(n => `
+                        <div class="p-2 border-bottom small ${n.read ? '' : 'fw-bold'}">
+                            ${n.message}
+                            <div class="text-muted" style="font-weight:normal;">${new Date(n.date).toLocaleString()}</div>
+                        </div>
+                    `).join('');
+            }
+        } catch (e) {}
+    }
+
+    function toggleNotificationPanel() {
+        const panel = document.getElementById('notif-panel');
+        const isOpen = panel.style.display === 'block';
+        panel.style.display = isOpen ? 'none' : 'block';
+        if (!isOpen) markAllNotificationsRead();
+    }
+
+    async function markAllNotificationsRead() {
+        try {
+            await authFetch('/api/notifications/mark-read', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}) });
+            const badge = document.getElementById('notif-badge');
+            if (badge) badge.style.display = 'none';
+        } catch (e) {}
+    }

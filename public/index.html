@@ -66,10 +66,22 @@
                 <input type="text" id="global-search" class="form-control form-control-sm me-2" 
                placeholder="Search..." onkeyup="executeSearch()" 
                style="display:none; max-width:150px; border-radius: 20px;">
+                <div class="position-relative me-3" style="cursor:pointer;" onclick="toggleNotificationPanel()">
+                    <i class="fas fa-bell fs-5 text-muted"></i>
+                    <span id="notif-badge" class="badge rounded-pill bg-danger" style="display:none; position:absolute; top:-6px; right:-8px; font-size:0.6rem;">0</span>
+                </div>
                 <i class="fas fa-search fs-5 text-muted" id="searchBtn" onclick="toggleSearchInput()" style="cursor:pointer;"></i>
             </div>
         </div>
 
+
+        <div id="notif-panel" style="display:none; position:fixed; top:56px; right:8px; width:300px; max-height:400px; overflow-y:auto; background:white; border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,0.15); z-index:15000;">
+            <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                <strong class="small">Notifications</strong>
+                <button class="btn btn-sm btn-link p-0" onclick="markAllNotificationsRead()">Mark all read</button>
+            </div>
+            <div id="notif-list" class="p-2"><p class="text-muted small text-center m-0">No notifications yet.</p></div>
+        </div>
 
         <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
         <div class="sidebar" id="sidebar">
@@ -114,6 +126,14 @@
                 <div class="nav-link" data-role="admin" style="display:none;" onclick="showSection('admin-teachers', 'Admin Panel')">
                     <i class="fas fa-chalkboard-teacher me-3"></i> Admin Panel
                 </div>                
+
+                <div class="nav-link" data-role="parent" style="display:none;" onclick="showSection('parent-panel', 'My Children')">
+                    <i class="fas fa-child me-3"></i> My Children
+                </div>
+
+                <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('feedback-inbox', 'Feedback')">
+                    <i class="fas fa-comment-dots me-3"></i> Feedback
+                </div>
 
                 <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage Students')">
                     <i class="fas fa-user-graduate me-3"></i> Manage Students
@@ -248,6 +268,22 @@
                 
                 <div id="teacher-list">Loading teachers...</div>
 
+                <div class="card p-3 mb-4 mt-4">
+                    <h6>Add/Update Parent Account</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><input type="text" id="p-name" class="form-control" placeholder="Parent's Full Name"></div>
+                        <div class="col-6"><input type="text" id="p-id" class="form-control" placeholder="Parent ID (Login)"></div>
+                        <div class="col-6"><input type="password" id="p-pass" class="form-control" placeholder="Password"></div>
+                        <div class="col-6"><input type="text" id="p-students" class="form-control" placeholder="Student ID(s), comma-separated"></div>
+                    </div>
+                    <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateParent(this)">Save Parent</button>
+                </div>
+
+                <div id="parent-management-list" class="mb-4">
+                    <h6>Parent Accounts</h6>
+                    <div id="parents-list-container">Loading parents...</div>
+                </div>
+
                 <div id="class-management-list" class="mt-4">
                     <h6>Manage Classes</h6>
                     <div id="classes-list-container">Loading classes...</div>
@@ -381,6 +417,35 @@
                     <button class="btn btn-success mt-2 w-100" onclick="uploadMaterial(this)">Upload Material</button>
                 </div>
                 <div id="material-list">Loading materials...</div>
+            </div>
+
+            <div id="parent-panel" class="section-panel">
+                <h3 class="fw-bold mb-4">👨‍👩‍👧 My Children</h3>
+                <div id="parent-child-selector" class="mb-3"></div>
+                <div id="parent-child-details"></div>
+
+                <div class="card p-3 mt-4">
+                    <h6>Send Feedback</h6>
+                    <select id="fb-category" class="form-control mb-2" style="background-color: white; height: calc(2.25rem + 2px); padding-left: 12px;">
+                        <option value="Academic">Academic</option>
+                        <option value="Facilities">Facilities</option>
+                        <option value="Complaint">Complaint</option>
+                        <option value="Suggestion">Suggestion</option>
+                        <option value="General">General</option>
+                    </select>
+                    <textarea id="fb-message" class="form-control mb-2" rows="3" placeholder="Write your message to the school..."></textarea>
+                    <button class="btn btn-primary w-100" onclick="submitFeedback(this)">Submit Feedback</button>
+                </div>
+
+                <div class="mt-4">
+                    <h6>My Past Feedback</h6>
+                    <div id="parent-feedback-list">Loading...</div>
+                </div>
+            </div>
+
+            <div id="feedback-inbox" class="section-panel">
+                <h3 class="fw-bold mb-4">💬 Feedback Inbox</h3>
+                <div id="feedback-inbox-list">Loading...</div>
             </div>
         </div> <div class="bottom-nav">
             <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">

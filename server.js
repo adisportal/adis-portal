@@ -146,6 +146,23 @@ function requireSelfOrRole(paramName, ...roles) {
     };
 }
 
+// Same as requireSelfOrRole, but also lets a parent through for any
+// student that's listed in their own linkedStudentIds. Used on the
+// read-only student-facing routes (profile, attendance) so a parent can
+// view their child's data without being able to touch anyone else's.
+function requireSelfOrRoleOrParent(paramName, ...roles) {
+    return (req, res, next) => {
+        if (req.currentUser.role === 'admin' || roles.includes(req.currentUser.role)) return next();
+        if (req.currentUser.studentId === req.params[paramName]) return next();
+        if (req.currentUser.role === 'parent' &&
+            Array.isArray(req.currentUser.linkedStudentIds) &&
+            req.currentUser.linkedStudentIds.includes(req.params[paramName])) {
+            return next();
+        }
+        return res.status(403).json({ success: false, message: "Not authorized for this record." });
+    };
+}
+
 // Lightweight audit trail for sensitive admin/teacher actions.
 async function logAudit(req, action, details = {}) {
     try {
@@ -159,6 +176,43 @@ async function logAudit(req, action, details = {}) {
         });
     } catch (e) {
         console.error('Audit log failed:', e.message);
+    }
+}
+
+// Sends a notification to every parent linked to a given studentId (a
+// parent may have more than one child, and a child may — in principle —
+// have more than one linked parent, so this fans out to all of them).
+async function notifyParentsOfStudent(schoolId, studentId, type, message, link = null) {
+    try {
+        const parents = await db.collection('users').find(
+            { role: 'parent', schoolId, linkedStudentIds: studentId },
+            { projection: { studentId: 1 } }
+        ).toArray();
+        if (parents.length === 0) return;
+        const docs = parents.map(p => ({
+            recipientId: p.studentId,
+            schoolId,
+            type,
+            message,
+            link,
+            read: false,
+            date: new Date()
+        }));
+        await db.collection('notifications').insertMany(docs);
+    } catch (e) {
+        console.error('Notification dispatch failed:', e.message);
+    }
+}
+
+// Sends a notification directly to one user by their login id (used e.g.
+// to tell a parent their feedback got a response).
+async function notifyUser(schoolId, recipientId, type, message, link = null) {
+    try {
+        await db.collection('notifications').insertOne({
+            recipientId, schoolId, type, message, link, read: false, date: new Date()
+        });
+    } catch (e) {
+        console.error('Notification dispatch failed:', e.message);
     }
 }
 
@@ -437,6 +491,87 @@ app.get('/api/teachers', requireAuth, requireRole('admin'), async (req, res) => 
 });
 
 // =======================================================================
+// ADMIN: PARENTS
+// A parent is a login account (role: 'parent') linked to one or more
+// existing students via linkedStudentIds. It carries no classId/fees of
+// its own — all of that is read through the linked student record(s).
+// =======================================================================
+app.post('/api/admin/parents/upsert', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const { id, password, name, linkedStudentIds } = req.body;
+        const schoolId = req.currentUser.schoolId;
+        if (!id || !name || !Array.isArray(linkedStudentIds) || linkedStudentIds.length === 0) {
+            return res.status(400).json({ success: false, message: "ID, name and at least one linked student ID are required." });
+        }
+        if (!(await idBelongsToSchool(id, 'parent', schoolId))) {
+            return res.status(400).json({ success: false, message: "That ID is already in use by a different user or school." });
+        }
+        // Every linked ID must actually be a student in this admin's school.
+        const validCount = await db.collection('users').countDocuments({
+            studentId: { $in: linkedStudentIds }, role: 'student', schoolId
+        });
+        if (validCount !== linkedStudentIds.length) {
+            return res.status(400).json({ success: false, message: "One or more linked student IDs don't belong to a student in your school." });
+        }
+
+        let updateData = { name, role: "parent", schoolId, linkedStudentIds };
+        if (password && password.trim() !== "") {
+            updateData.password = await bcrypt.hash(password, 10);
+        }
+        const result = await db.collection('users').updateOne(
+            { studentId: id, role: "parent", schoolId },
+            { $set: updateData },
+            { upsert: true }
+        );
+        await logAudit(req, 'parent_upsert', { targetId: id, linkedStudentIds });
+        res.json({
+            success: true,
+            message: result.upsertedCount > 0 ? "Parent account created successfully" : "Parent account updated successfully"
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.delete('/api/admin/parents/:id', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        await db.collection('users').deleteOne({ studentId: req.params.id, role: "parent", schoolId: req.currentUser.schoolId });
+        await logAudit(req, 'parent_delete', { targetId: req.params.id });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+app.get('/api/admin/parents', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const parents = await db.collection('users').find(
+            { role: "parent", schoolId: req.currentUser.schoolId },
+            { projection: PUBLIC_PROJECTION }
+        ).sort({ name: 1 }).toArray();
+        res.json(parents);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// A parent's own view of their linked children's basic info (name,
+// class, fees, performance) — reuses the same shape as student/profile
+// but returns all linked children in one call.
+app.get('/api/parent/children', requireAuth, requireRole('parent'), async (req, res) => {
+    try {
+        const children = await db.collection('users').find(
+            { studentId: { $in: req.currentUser.linkedStudentIds || [] }, role: 'student', schoolId: req.currentUser.schoolId },
+            { projection: PUBLIC_PROJECTION }
+        ).toArray();
+        res.json(children);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// =======================================================================
 // TEACHER/ADMIN: STUDENTS
 // =======================================================================
 app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
@@ -540,6 +675,7 @@ app.post('/api/fees/update', requireAuth, requireRole('admin', 'teacher'), async
             { $inc: { feesPaid: amountPaid } }
         );
         await logAudit(req, 'fees_update', { targetId: studentId, amountPaid });
+        notifyParentsOfStudent(req.currentUser.schoolId, studentId, 'fees', `A payment of ₹${amountPaid} was recorded on your child's fee account.`);
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
@@ -572,13 +708,16 @@ app.post('/api/attendance/update', requireAuth, requireRole('admin', 'teacher'),
             { upsert: true }
         );
         await logAudit(req, 'attendance_update', { targetId: studentId, date, status });
+        if (status === 'Absent') {
+            notifyParentsOfStudent(schoolId, studentId, 'attendance', `Your child was marked absent on ${date}.`);
+        }
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
     }
 });
 
-app.get('/api/student/attendance/:studentId', requireAuth, requireSelfOrRole('studentId', 'teacher'), async (req, res) => {
+app.get('/api/student/attendance/:studentId', requireAuth, requireSelfOrRoleOrParent('studentId', 'teacher'), async (req, res) => {
     try {
         const records = await db.collection('attendance').find({
             studentId: req.params.studentId,
@@ -593,7 +732,7 @@ app.get('/api/student/attendance/:studentId', requireAuth, requireSelfOrRole('st
 // =======================================================================
 // STUDENT PROFILE
 // =======================================================================
-app.get('/api/student/profile/:studentId', requireAuth, requireSelfOrRole('studentId', 'teacher'), async (req, res) => {
+app.get('/api/student/profile/:studentId', requireAuth, requireSelfOrRoleOrParent('studentId', 'teacher'), async (req, res) => {
     try {
         const student = await db.collection('users').findOne(
             { studentId: req.params.studentId, schoolId: req.currentUser.schoolId },
@@ -809,6 +948,120 @@ app.get('/api/admin/audit-log', requireAuth, requireRole('admin'), async (req, r
         res.json(logs);
     } catch (e) {
         res.status(500).json([]);
+    }
+});
+
+// =======================================================================
+// FEEDBACK
+// Parent -> teacher/admin. Categorized with a status so submissions get
+// tracked instead of disappearing into a form nobody looks at.
+// =======================================================================
+app.post('/api/feedback', requireAuth, requireRole('parent'), async (req, res) => {
+    try {
+        const { studentId, category, message } = req.body;
+        if (!message || !message.trim()) {
+            return res.status(400).json({ success: false, message: "Message is required." });
+        }
+        const linked = req.currentUser.linkedStudentIds || [];
+        const targetStudentId = studentId && linked.includes(studentId) ? studentId : linked[0];
+        if (!targetStudentId) {
+            return res.status(400).json({ success: false, message: "No linked child found on this account." });
+        }
+        const doc = {
+            schoolId: req.currentUser.schoolId,
+            studentId: targetStudentId,
+            fromId: req.currentUser.studentId,
+            fromName: req.currentUser.name,
+            category: category || 'General',
+            message: message.trim(),
+            status: 'open',
+            response: null,
+            date: new Date(),
+            updatedAt: new Date()
+        };
+        await db.collection('feedback').insertOne(doc);
+        await logAudit(req, 'feedback_submit', { studentId: targetStudentId, category: doc.category });
+        res.json({ success: true, message: "Feedback submitted." });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// Admin/teacher: full school feed. Parent: only their own submissions.
+app.get('/api/feedback', requireAuth, async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        let query = { schoolId };
+        if (req.currentUser.role === 'parent') {
+            query.fromId = req.currentUser.studentId;
+        } else if (!['admin', 'teacher'].includes(req.currentUser.role)) {
+            return res.status(403).json({ success: false, message: "Not authorized." });
+        }
+        const items = await db.collection('feedback').find(query).sort({ date: -1 }).toArray();
+        res.json(items);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+app.put('/api/feedback/:id/status', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const { status, response } = req.body;
+        const validStatuses = ['open', 'in_review', 'resolved'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status." });
+        }
+        const item = await db.collection('feedback').findOne({ _id: new ObjectId(req.params.id), schoolId: req.currentUser.schoolId });
+        if (!item) return res.status(404).json({ success: false, message: "Feedback not found." });
+
+        const updateFields = { status, updatedAt: new Date() };
+        if (typeof response === 'string' && response.trim()) updateFields.response = response.trim();
+
+        await db.collection('feedback').updateOne(
+            { _id: item._id },
+            { $set: updateFields }
+        );
+        await logAudit(req, 'feedback_status_update', { targetId: req.params.id, status });
+        notifyUser(item.schoolId, item.fromId, 'feedback', `Your feedback status changed to "${status.replace('_',' ')}".`);
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// =======================================================================
+// NOTIFICATIONS
+// Targeted, per-recipient records (see notifyParentsOfStudent/notifyUser
+// above). Polled by the frontend rather than pushed in real time — a
+// WebSocket-based live version is a good next increment once this basic
+// version has been used for a while.
+// =======================================================================
+app.get('/api/notifications', requireAuth, async (req, res) => {
+    try {
+        const items = await db.collection('notifications')
+            .find({ recipientId: req.currentUser.studentId, schoolId: req.currentUser.schoolId })
+            .sort({ date: -1 })
+            .limit(50)
+            .toArray();
+        res.json(items);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+app.post('/api/notifications/mark-read', requireAuth, async (req, res) => {
+    try {
+        const { ids } = req.body; // optional array of specific ids; if omitted, marks all read
+        const query = { recipientId: req.currentUser.studentId, schoolId: req.currentUser.schoolId };
+        if (Array.isArray(ids) && ids.length > 0) {
+            query._id = { $in: ids.map(id => new ObjectId(id)) };
+        }
+        await db.collection('notifications').updateMany(query, { $set: { read: true } });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
     }
 });
 
