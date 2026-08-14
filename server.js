@@ -471,6 +471,61 @@ app.get('/api/owner/stats', requireAuth, requireRole('owner'), async (req, res) 
     }
 });
 
+// Income + growth cards for the Owner Panel (Phase 2C, item 4).
+// Income is computed on demand from data that already exists — no schema
+// change. Growth relies on the createdAt stamping added earlier in this
+// phase, so it will only reflect accounts created from here on; it can't
+// retroactively backfill history for older accounts.
+app.get('/api/owner/analytics', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const schools = await db.collection('schools').find({}).toArray();
+        const students = await db.collection('users').find(
+            { role: 'student' }, { projection: { schoolId: 1, feesPaid: 1, totalFees: 1, createdAt: 1 } }
+        ).toArray();
+        const staffGrowth = await db.collection('users').find(
+            { role: { $in: ['teacher', 'parent'] } }, { projection: { role: 1, createdAt: 1 } }
+        ).toArray();
+
+        const income = schools.map(s => {
+            const schoolStudents = students.filter(st => st.schoolId === s.schoolId);
+            const totalFees = schoolStudents.reduce((sum, st) => sum + (st.totalFees || 0), 0);
+            const feesPaid = schoolStudents.reduce((sum, st) => sum + (st.feesPaid || 0), 0);
+            const collectionPct = totalFees > 0 ? Math.round((feesPaid / totalFees) * 100) : null;
+            return { schoolId: s.schoolId, schoolName: s.name, totalFees, feesPaid, collectionPct };
+        }).sort((a, b) => b.feesPaid - a.feesPaid);
+
+        const totalIncome = income.reduce((sum, i) => sum + i.feesPaid, 0);
+        const totalExpected = income.reduce((sum, i) => sum + i.totalFees, 0);
+        const overallCollectionPct = totalExpected > 0 ? Math.round((totalIncome / totalExpected) * 100) : null;
+
+        // Last 6 calendar months, new students/teachers/parents per month.
+        const now = new Date();
+        const months = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            months.push({
+                key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+                label: d.toLocaleString('default', { month: 'short', year: '2-digit' }),
+                students: 0, staff: 0
+            });
+        }
+        const bump = (list, createdAt, field) => {
+            if (!createdAt) return;
+            const d = new Date(createdAt);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const m = list.find(mo => mo.key === key);
+            if (m) m[field]++;
+        };
+        students.forEach(st => bump(months, st.createdAt, 'students'));
+        staffGrowth.forEach(u => bump(months, u.createdAt, 'staff'));
+
+        res.json({ income, totalIncome, totalExpected, overallCollectionPct, growth: months });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ income: [], totalIncome: 0, totalExpected: 0, overallCollectionPct: null, growth: [] });
+    }
+});
+
 // =======================================================================
 // ADMIN: TEACHERS
 // =======================================================================

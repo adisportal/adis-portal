@@ -750,8 +750,61 @@ async function toggleMaintenanceMode() {
     // ==========================================
     async function loadOwnerDashboard() {
         loadOwnerStats();
+        loadOwnerAnalytics();
         loadSchools();
         loadAdmins();
+    }
+
+    async function loadOwnerAnalytics() {
+        const box = document.getElementById('owner-analytics');
+        if (!box) return;
+        try {
+            const res = await authFetch('/api/owner/analytics');
+            const data = await res.json();
+
+            const maxCount = Math.max(1, ...data.growth.map(m => Math.max(m.students, m.staff)));
+            const growthBars = data.growth.map(m => `
+                <div class="growth-bar-col">
+                    <div style="display:flex; gap:2px; align-items:flex-end; width:100%; height:100%;">
+                        <div class="growth-bar-fill" style="height:${(m.students / maxCount) * 100}%; background: var(--teal); flex:1;" title="${m.students} new students"></div>
+                        <div class="growth-bar-fill" style="height:${(m.staff / maxCount) * 100}%; background: var(--amber); flex:1;" title="${m.staff} new teachers/parents"></div>
+                    </div>
+                    <div class="growth-bar-label">${m.label}</div>
+                </div>
+            `).join('');
+
+            const incomeRows = data.income.length === 0 ? `<p class="text-muted small mb-0">No schools yet.</p>` : data.income.map(i => `
+                <div class="income-row">
+                    <div style="flex:1;">
+                        <div>${i.schoolName}</div>
+                        <div class="income-pct-bar"><div class="income-pct-fill" style="width:${i.collectionPct ?? 0}%;"></div></div>
+                    </div>
+                    <div class="text-end ms-3">
+                        <div class="fw-bold">${i.collectionPct !== null ? i.collectionPct + '%' : '—'}</div>
+                        <div class="text-muted" style="font-size:0.7rem;">₹${i.feesPaid.toLocaleString()} / ₹${i.totalFees.toLocaleString()}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            box.innerHTML = `
+                <div class="card p-3 mb-3">
+                    <h6>Growth <span class="text-muted small">(new accounts / month)</span></h6>
+                    <div class="growth-bars">${growthBars}</div>
+                    <div class="d-flex gap-3 mt-2 small text-muted">
+                        <span><span style="display:inline-block;width:8px;height:8px;background:var(--teal);border-radius:2px;margin-right:4px;"></span>Students</span>
+                        <span><span style="display:inline-block;width:8px;height:8px;background:var(--amber);border-radius:2px;margin-right:4px;"></span>Teachers/Parents</span>
+                    </div>
+                </div>
+                <div class="card p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Income by School</h6>
+                        <span class="fw-bold">${data.overallCollectionPct !== null ? data.overallCollectionPct + '% collected' : '—'}</span>
+                    </div>
+                    ${incomeRows}
+                </div>`;
+        } catch (e) {
+            box.innerHTML = '';
+        }
     }
 
     async function loadOwnerStats() {
