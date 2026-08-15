@@ -665,7 +665,7 @@ app.get('/api/parent/children', requireAuth, requireRole('parent'), async (req, 
 // =======================================================================
 app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
     try {
-        let { id, password, name, classId, totalFees } = req.body;
+        let { id, password, name, classId, totalFees, feeDueDate } = req.body;
         if (!name || name.trim() === "") {
             return res.status(400).json({ success: false, message: "Student name is required." });
         }
@@ -686,6 +686,7 @@ app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teac
             role: "student",
             schoolId
         };
+        if (feeDueDate) updateData.feeDueDate = feeDueDate;
         if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
@@ -769,6 +770,218 @@ app.post('/api/fees/update', requireAuth, requireRole('admin', 'teacher'), async
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
+    }
+});
+
+// Fee due-dates + reminders (Phase 3). No real cron here — Render's free
+// tier sleeps on idle, so a scheduled job wouldn't fire reliably anyway.
+// Instead this is admin-triggered from the Fees screen (single student or
+// bulk "remind all overdue"), reusing the existing notification system.
+app.post('/api/admin/fees/set-due-date', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const { studentId, feeDueDate } = req.body;
+        if (!studentId) return res.status(400).json({ success: false, message: "studentId is required." });
+        const result = await db.collection('users').updateOne(
+            { studentId, role: 'student', schoolId: req.currentUser.schoolId },
+            feeDueDate ? { $set: { feeDueDate } } : { $unset: { feeDueDate: "" } }
+        );
+        if (result.matchedCount === 0) return res.status(404).json({ success: false, message: "Student not found." });
+        await logAudit(req, 'fee_due_date_set', { targetId: studentId, feeDueDate: feeDueDate || null });
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// Students with an outstanding balance and a due date within the next 3
+// days (or already past). "Due soon" as well as overdue so admins can
+// get ahead of it, not just chase after the fact.
+app.get('/api/admin/fees/overdue', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + 3);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+        const students = await db.collection('users').find(
+            { role: 'student', schoolId, feeDueDate: { $exists: true, $ne: null, $lte: cutoffStr } },
+            { projection: { studentId: 1, name: 1, classId: 1, totalFees: 1, feesPaid: 1, feeDueDate: 1, lastFeeReminderAt: 1 } }
+        ).sort({ feeDueDate: 1 }).toArray();
+
+        const today = new Date().toISOString().slice(0, 10);
+        const overdue = students
+            .filter(s => (s.totalFees || 0) - (s.feesPaid || 0) > 0)
+            .map(s => ({
+                studentId: s.studentId, name: s.name, classId: s.classId,
+                remaining: (s.totalFees || 0) - (s.feesPaid || 0),
+                feeDueDate: s.feeDueDate,
+                isOverdue: s.feeDueDate < today,
+                lastFeeReminderAt: s.lastFeeReminderAt || null
+            }));
+        res.json(overdue);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
+const FEE_REMINDER_COOLDOWN_HOURS = 24;
+
+async function sendFeeReminder(schoolId, student) {
+    const now = new Date();
+    if (student.lastFeeReminderAt) {
+        const hoursSince = (now - new Date(student.lastFeeReminderAt)) / (1000 * 60 * 60);
+        if (hoursSince < FEE_REMINDER_COOLDOWN_HOURS) return false;
+    }
+    const remaining = (student.totalFees || 0) - (student.feesPaid || 0);
+    const dueLabel = student.feeDueDate < now.toISOString().slice(0, 10) ? 'was due on' : 'is due on';
+    notifyParentsOfStudent(schoolId, student.studentId, 'fees',
+        `Fee reminder: ₹${remaining} for ${student.name} ${dueLabel} ${student.feeDueDate}.`);
+    await db.collection('users').updateOne({ studentId: student.studentId, schoolId }, { $set: { lastFeeReminderAt: now } });
+    return true;
+}
+
+app.post('/api/admin/fees/remind/:studentId', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const student = await db.collection('users').findOne(
+            { studentId: req.params.studentId, role: 'student', schoolId },
+            { projection: { studentId: 1, name: 1, totalFees: 1, feesPaid: 1, feeDueDate: 1, lastFeeReminderAt: 1 } }
+        );
+        if (!student || !student.feeDueDate) return res.status(404).json({ success: false, message: "Student or due date not found." });
+        const sent = await sendFeeReminder(schoolId, student);
+        await logAudit(req, 'fee_reminder_sent', { targetId: student.studentId, sent });
+        res.json({ success: true, sent, message: sent ? "Reminder sent." : "A reminder was already sent recently — skipped to avoid spamming." });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.post('/api/admin/fees/remind-all', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + 3);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        const students = await db.collection('users').find(
+            { role: 'student', schoolId, feeDueDate: { $exists: true, $ne: null, $lte: cutoffStr } },
+            { projection: { studentId: 1, name: 1, totalFees: 1, feesPaid: 1, feeDueDate: 1, lastFeeReminderAt: 1 } }
+        ).toArray();
+        const overdue = students.filter(s => (s.totalFees || 0) - (s.feesPaid || 0) > 0);
+
+        let sentCount = 0, skippedCount = 0;
+        for (const s of overdue) {
+            const sent = await sendFeeReminder(schoolId, s);
+            if (sent) sentCount++; else skippedCount++;
+        }
+        await logAudit(req, 'fee_reminder_bulk_sent', { sentCount, skippedCount });
+        res.json({ success: true, sentCount, skippedCount });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// =======================================================================
+// TIMETABLE (Phase 3)
+// One document per scheduled period: { schoolId, classId, day, period,
+// startTime, endTime, subject, teacherId }. A teacher's "my schedule"
+// aggregates across every class they're assigned to teach, since a
+// teacher can hold a subject slot in a class that isn't their own
+// homeroom classId.
+// =======================================================================
+const TIMETABLE_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+app.post('/api/admin/timetable/slot', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        let { classId, day, period, startTime, endTime, subject, teacherId } = req.body;
+        if (!classId || !day || !period || !subject || !subject.trim()) {
+            return res.status(400).json({ success: false, message: "Class, day, period, and subject are required." });
+        }
+        if (!TIMETABLE_DAYS.includes(day)) {
+            return res.status(400).json({ success: false, message: "Invalid day." });
+        }
+        period = parseInt(period);
+        if (teacherId) {
+            const teacher = await db.collection('users').findOne({ studentId: teacherId, role: 'teacher', schoolId });
+            if (!teacher) return res.status(400).json({ success: false, message: "Teacher not found in your school." });
+        }
+        const clash = await db.collection('timetableSlots').findOne({ schoolId, classId, day, period });
+        if (clash) return res.status(400).json({ success: false, message: `Period ${period} on ${day} is already scheduled for this class.` });
+
+        const doc = {
+            schoolId, classId, day, period,
+            startTime: startTime || '', endTime: endTime || '',
+            subject: subject.trim(), teacherId: teacherId || null,
+            createdAt: new Date()
+        };
+        const result = await db.collection('timetableSlots').insertOne(doc);
+        await logAudit(req, 'timetable_slot_create', { classId, day, period, subject: doc.subject });
+        res.json({ success: true, slot: { ...doc, _id: result.insertedId } });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.delete('/api/admin/timetable/slot/:id', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const result = await db.collection('timetableSlots').deleteOne({ _id: new ObjectId(req.params.id), schoolId: req.currentUser.schoolId });
+        await logAudit(req, 'timetable_slot_delete', { id: req.params.id });
+        res.json({ success: result.deletedCount > 0 });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+async function enrichTimetableSlots(slots) {
+    const teacherIds = [...new Set(slots.filter(s => s.teacherId).map(s => s.teacherId))];
+    const teachers = await db.collection('users').find({ studentId: { $in: teacherIds } }, { projection: { studentId: 1, name: 1 } }).toArray();
+    const teacherById = Object.fromEntries(teachers.map(t => [t.studentId, t]));
+    return slots
+        .map(s => ({ ...s, teacherName: s.teacherId ? (teacherById[s.teacherId] ? teacherById[s.teacherId].name : 'Unknown') : null }))
+        .sort((a, b) => TIMETABLE_DAYS.indexOf(a.day) - TIMETABLE_DAYS.indexOf(b.day) || a.period - b.period);
+}
+
+app.get('/api/timetable/class/:classId', requireAuth, async (req, res) => {
+    try {
+        const slots = await db.collection('timetableSlots').find({ schoolId: req.currentUser.schoolId, classId: req.params.classId }).toArray();
+        res.json(await enrichTimetableSlots(slots));
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// Role-aware "my schedule": teacher gets every slot they're assigned to
+// teach across classes, student gets their own class's timetable, parent
+// needs ?studentId= to pick which child.
+app.get('/api/timetable/mine', requireAuth, async (req, res) => {
+    try {
+        const user = req.currentUser;
+        let query = { schoolId: user.schoolId };
+        if (user.role === 'teacher') {
+            query.teacherId = user.studentId;
+        } else if (user.role === 'student') {
+            query.classId = user.classId;
+        } else if (user.role === 'parent') {
+            const studentId = req.query.studentId;
+            if (!studentId || !Array.isArray(user.linkedStudentIds) || !user.linkedStudentIds.includes(studentId)) {
+                return res.status(403).json({ success: false, message: "Not linked to this student." });
+            }
+            const student = await db.collection('users').findOne({ studentId, role: 'student', schoolId: user.schoolId });
+            if (!student) return res.json([]);
+            query.classId = student.classId;
+        } else {
+            return res.json([]);
+        }
+        const slots = await db.collection('timetableSlots').find(query).toArray();
+        res.json(await enrichTimetableSlots(slots));
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
     }
 });
 

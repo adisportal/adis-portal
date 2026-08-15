@@ -1,6 +1,6 @@
 // Bump this on any future change to this file — it's what forces old,
 // stuck caches to get thrown away on activate().
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `adis-${CACHE_VERSION}`;
 
 // Only truly static, rarely-changing third-party assets belong here.

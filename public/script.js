@@ -271,6 +271,7 @@
             'attendance': 'nav-att', 
             'fees': 'nav-fees', 
             'study-material': 'nav-mat',
+            'timetable': 'nav-tt',
             'chat-hub': 'nav-chats'
         };
 
@@ -284,6 +285,7 @@
         if (id === 'staff-students') { loadClassDropdown(); loadClassStudents(); }
         if (id === 'parent-panel') loadParentChildren();
         if (id === 'feedback-inbox') loadFeedbackInbox();
+        if (id === 'timetable') loadTimetableSection();
         if (id === 'admin-teachers') loadParents();
         if (id === 'chat-hub') loadChatHub();
         if (id === 'oversight-panel') loadOversightPanel();
@@ -445,16 +447,85 @@ async function toggleMaintenanceMode() {
         const data = { studentId: document.getElementById('fee-sid').value, amountPaid: parseFloat(document.getElementById('fee-paid').value) };
         btn.disabled = true;
         const res = await authFetch('/api/fees/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
-        if ((await res.json()).success) { alert("Fee Updated!"); btn.disabled = false; }
+        if ((await res.json()).success) { alert("Fee Updated!"); btn.disabled = false; loadFeeOverduePanel(); }
+        else btn.disabled = false;
+    }
+
+    async function submitFeeDueDate(btn) {
+        const studentId = document.getElementById('fee-due-sid').value.trim();
+        const feeDueDate = document.getElementById('fee-due-date').value;
+        if (!studentId || !feeDueDate) return alert("Student ID and a due date are both required.");
+        btn.disabled = true;
+        try {
+            const res = await authFetch('/api/admin/fees/set-due-date', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ studentId, feeDueDate })
+            });
+            const result = await res.json();
+            if (result.success) { alert("Due date set."); loadFeeOverduePanel(); } else alert(result.message || "Couldn't set due date.");
+        } catch (e) { alert("Couldn't set due date."); }
+        btn.disabled = false;
+    }
+
+    async function loadFeeOverduePanel() {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const panel = document.getElementById('fee-overdue-panel');
+        if (user.role !== 'admin') { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+        panel.innerHTML = "Loading due/overdue fees...";
+        try {
+            const res = await authFetch('/api/admin/fees/overdue');
+            const list = await res.json();
+            if (list.length === 0) { panel.innerHTML = `<div class="card p-3 text-muted small">No fees due in the next 3 days. 🎉</div>`; return; }
+            panel.innerHTML = `
+                <div class="card p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Due &amp; Overdue Fees</h6>
+                        <button class="btn btn-sm btn-outline-danger" onclick="remindAllFees(this)">Remind All</button>
+                    </div>
+                    ${list.map(s => `
+                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                            <div>
+                                <div>${escapeHtml(s.name)} <span class="text-muted small">(${escapeHtml(s.classId || '')})</span></div>
+                                <div class="small ${s.isOverdue ? 'text-danger' : 'text-muted'}">₹${s.remaining} · ${s.isOverdue ? 'overdue since' : 'due'} ${s.feeDueDate}</div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="remindOneFee('${s.studentId}', this)">Remind</button>
+                        </div>
+                    `).join('')}
+                </div>`;
+        } catch (e) { panel.innerHTML = ''; }
+    }
+
+    async function remindOneFee(studentId, btn) {
+        btn.disabled = true;
+        try {
+            const res = await authFetch(`/api/admin/fees/remind/${studentId}`, { method: 'POST' });
+            const result = await res.json();
+            btn.innerText = result.sent ? 'Sent ✓' : 'Skipped';
+        } catch (e) { btn.innerText = 'Error'; }
+    }
+
+    async function remindAllFees(btn) {
+        btn.disabled = true;
+        const original = btn.innerText;
+        btn.innerText = 'Sending...';
+        try {
+            const res = await authFetch('/api/admin/fees/remind-all', { method: 'POST' });
+            const result = await res.json();
+            btn.innerText = `Sent ${result.sentCount}${result.skippedCount ? `, skipped ${result.skippedCount}` : ''}`;
+        } catch (e) { btn.innerText = original; btn.disabled = false; }
     }
 
     async function loadFees() {
         const user = JSON.parse(localStorage.getItem('currentUser'));
         const content = document.getElementById('fee-content');
-        
+
         if (user.role === 'admin' || user.role === 'teacher') {
             document.getElementById('fee-admin-controls').style.display = 'block';
         }
+        if (user.role === 'admin') {
+            document.getElementById('fee-due-date-controls').style.display = 'block';
+        }
+        loadFeeOverduePanel();
 
         try {
             const res = await authFetch(`/api/student/profile/${user.id}`);
@@ -470,9 +541,149 @@ async function toggleMaintenanceMode() {
                     <div class="card p-3">
                         <div class="d-flex justify-content-between"><span>Total:</span><strong>₹${data.totalFees}</strong></div>
                         <div class="d-flex justify-content-between"><span>Paid:</span><strong class="text-success">₹${data.feesPaid}</strong></div>
+                        ${data.feeDueDate ? `<div class="d-flex justify-content-between"><span>Due date:</span><strong>${data.feeDueDate}</strong></div>` : ''}
                     </div>`;
             }
         } catch (e) { content.innerHTML = "Error loading fees."; }
+    }
+
+    // ==========================================
+    // TIMETABLE (Phase 3)
+    // ==========================================
+    const TT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    function renderTimetableGrid(slots, editable) {
+        if (slots.length === 0) return `<div class="card p-3 text-muted small">No periods scheduled yet.</div>`;
+        const byDay = {};
+        TT_DAYS.forEach(d => byDay[d] = []);
+        slots.forEach(s => { if (byDay[s.day]) byDay[s.day].push(s); });
+        return TT_DAYS.filter(d => byDay[d].length > 0).map(day => `
+            <div class="card p-2 mb-2">
+                <div class="fw-bold small mb-1">${day}</div>
+                ${byDay[day].map(s => `
+                    <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                        <div>
+                            <span class="badge bg-secondary me-2">P${s.period}</span>
+                            <strong>${escapeHtml(s.subject)}</strong>
+                            ${s.startTime ? `<span class="text-muted small ms-1">${s.startTime}${s.endTime ? '–' + s.endTime : ''}</span>` : ''}
+                            ${s.teacherName ? `<div class="text-muted small">${escapeHtml(s.teacherName)}</div>` : ''}
+                        </div>
+                        ${editable ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteTimetableSlot('${s._id}')"><i class="fas fa-trash"></i></button>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
+    }
+
+    async function loadTimetableSection() {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const content = document.getElementById('timetable-content');
+        const adminControls = document.getElementById('timetable-admin-controls');
+
+        if (user.role === 'admin') {
+            adminControls.style.display = 'block';
+            await populateTimetableAdminForm();
+            loadClassTimetable();
+            return;
+        }
+        adminControls.style.display = 'none';
+
+        if (user.role === 'parent') {
+            try {
+                const res = await authFetch('/api/parent/children');
+                const children = await res.json();
+                if (children.length === 0) { content.innerHTML = `<p class="text-muted small">No linked children yet.</p>`; return; }
+                content.innerHTML = `
+                    <select id="tt-parent-child-select" class="form-select mb-3" onchange="loadParentChildTimetable()">
+                        ${children.map(c => `<option value="${c.studentId}">${escapeHtml(c.name)}</option>`).join('')}
+                    </select>
+                    <div id="tt-parent-child-grid">Loading...</div>`;
+                loadParentChildTimetable();
+            } catch (e) { content.innerHTML = "Error loading children."; }
+            return;
+        }
+
+        // Teacher or student: role-aware "my schedule".
+        content.innerHTML = "Loading timetable...";
+        try {
+            const res = await authFetch('/api/timetable/mine');
+            const slots = await res.json();
+            content.innerHTML = renderTimetableGrid(slots, false);
+        } catch (e) { content.innerHTML = "Error loading timetable."; }
+    }
+
+    async function loadParentChildTimetable() {
+        const studentId = document.getElementById('tt-parent-child-select').value;
+        const grid = document.getElementById('tt-parent-child-grid');
+        grid.innerHTML = "Loading...";
+        try {
+            const res = await authFetch(`/api/timetable/mine?studentId=${studentId}`);
+            const slots = await res.json();
+            grid.innerHTML = renderTimetableGrid(slots, false);
+        } catch (e) { grid.innerHTML = "Error loading timetable."; }
+    }
+
+    async function populateTimetableAdminForm() {
+        const daySelect = document.getElementById('tt-day');
+        if (daySelect.options.length === 0) {
+            daySelect.innerHTML = TT_DAYS.map(d => `<option value="${d}">${d}</option>`).join('');
+        }
+        const classSelect = document.getElementById('tt-class-select');
+        try {
+            const res = await authFetch('/api/classes');
+            const classes = await res.json();
+            classSelect.innerHTML = classes.map(c => `<option value="${c.className}">${escapeHtml(c.className)}</option>`).join('');
+        } catch (e) {}
+        const teacherSelect = document.getElementById('tt-teacher');
+        try {
+            const res = await authFetch('/api/teachers');
+            const teachers = await res.json();
+            teacherSelect.innerHTML = `<option value="">No teacher</option>` +
+                teachers.map(t => `<option value="${t.studentId}">${escapeHtml(t.name)}</option>`).join('');
+        } catch (e) {}
+    }
+
+    async function loadClassTimetable() {
+        const classId = document.getElementById('tt-class-select').value;
+        const content = document.getElementById('timetable-content');
+        if (!classId) { content.innerHTML = `<p class="text-muted small">No classes yet — create one under Manage first.</p>`; return; }
+        content.innerHTML = "Loading...";
+        try {
+            const res = await authFetch(`/api/timetable/class/${classId}`);
+            const slots = await res.json();
+            content.innerHTML = renderTimetableGrid(slots, true);
+        } catch (e) { content.innerHTML = "Error loading timetable."; }
+    }
+
+    async function addTimetableSlot() {
+        const classId = document.getElementById('tt-class-select').value;
+        const day = document.getElementById('tt-day').value;
+        const period = document.getElementById('tt-period').value;
+        const subject = document.getElementById('tt-subject').value.trim();
+        const startTime = document.getElementById('tt-start').value;
+        const endTime = document.getElementById('tt-end').value;
+        const teacherId = document.getElementById('tt-teacher').value;
+        if (!classId || !day || !period || !subject) return alert("Class, day, period, and subject are required.");
+        try {
+            const res = await authFetch('/api/admin/timetable/slot', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ classId, day, period, subject, startTime, endTime, teacherId })
+            });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't add period.");
+            document.getElementById('tt-period').value = '';
+            document.getElementById('tt-subject').value = '';
+            loadClassTimetable();
+        } catch (e) { alert("Couldn't add period."); }
+    }
+
+    async function deleteTimetableSlot(id) {
+        if (!confirm("Remove this period from the timetable?")) return;
+        try {
+            const res = await authFetch(`/api/admin/timetable/slot/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.success) loadClassTimetable(); else alert("Couldn't remove period.");
+        } catch (e) { alert("Couldn't remove period."); }
     }
 
     document.getElementById('att-date-select').valueAsDate = new Date();

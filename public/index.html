@@ -412,8 +412,38 @@
                         <div class="col-6"><input type="number" id="fee-paid" class="form-control" placeholder="Amount Paid"></div>
                     </div>
                     <button class="btn btn-primary mt-2" onclick="submitFeeUpdate(this)">Update Fee Record</button>
+                    <hr>
+                    <div id="fee-due-date-controls" style="display:none;">
+                        <h6>Set Due Date</h6>
+                        <div class="row g-2">
+                            <div class="col-6"><input type="text" id="fee-due-sid" class="form-control" placeholder="Student ID"></div>
+                            <div class="col-6"><input type="date" id="fee-due-date" class="form-control"></div>
+                        </div>
+                        <button class="btn btn-outline-primary mt-2" onclick="submitFeeDueDate(this)">Set Due Date</button>
+                    </div>
                 </div>
+                <div id="fee-overdue-panel" class="mb-4" style="display:none;"></div>
                 <div id="fee-content">Loading fee details...</div>
+            </div>
+
+            <div id="timetable" class="section-panel">
+                <h3 class="fw-bold mb-3">🗓️ Timetable</h3>
+                <div id="timetable-admin-controls" class="card p-3 mb-4" style="display:none;">
+                    <h6>Class Timetable</h6>
+                    <select id="tt-class-select" class="form-select mb-2" onchange="loadClassTimetable()"></select>
+                    <div class="row g-2">
+                        <div class="col-4"><select id="tt-day" class="form-select"></select></div>
+                        <div class="col-3"><input type="number" id="tt-period" class="form-control" placeholder="Period #" min="1"></div>
+                        <div class="col-5"><input type="text" id="tt-subject" class="form-control" placeholder="Subject"></div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-4"><input type="time" id="tt-start" class="form-control"></div>
+                        <div class="col-4"><input type="time" id="tt-end" class="form-control"></div>
+                        <div class="col-4"><select id="tt-teacher" class="form-select"><option value="">No teacher</option></select></div>
+                    </div>
+                    <button class="btn btn-primary mt-2 w-100" onclick="addTimetableSlot()">Add Period</button>
+                </div>
+                <div id="timetable-content">Loading timetable...</div>
             </div>
 
             <div id="study-material" class="section-panel">
@@ -507,6 +537,9 @@
             </div>
             <div class="nav-item" id="nav-mat" data-role="admin,teacher,student" style="display:none;" onclick="showSection('study-material', 'Materials')">
                 <i class="fas fa-book"></i>Materials
+            </div>
+            <div class="nav-item" id="nav-tt" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('timetable', 'Timetable')">
+                <i class="fas fa-calendar-week"></i>Timetable
             </div>
             <div class="nav-item" id="nav-chats" data-role="teacher,admin,parent,owner" style="display:none;" onclick="showSection('chat-hub', 'Chats')">
                 <i class="fas fa-comments"></i>Chats
