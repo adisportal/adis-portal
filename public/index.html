@@ -147,6 +147,15 @@
                 <div class="nav-link" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage Students')">
                     <i class="fas fa-user-graduate me-3"></i> Manage Students
                 </div>                
+
+                <div class="nav-link" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('homework', 'Homework')">
+                    <i class="fas fa-tasks me-3"></i> Homework
+                </div>
+
+                <div class="nav-link" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('report-cards', 'Report Cards')">
+                    <i class="fas fa-file-invoice me-3"></i> Report Cards
+                </div>
+
                 
                 <div class="nav-link text-danger" data-role="owner" style="display:none;" onclick="toggleMaintenanceMode()">
                     <i class="fas fa-power-off me-3"></i> Toggle Maintenance (All Schools)
@@ -368,6 +377,9 @@
                             </select>
                         </div>
                         <div class="col-12"><input type="number" id="s-fees" class="form-control" placeholder="Total Fees"></div>
+                        <div class="col-6"><input type="text" id="s-father" class="form-control" placeholder="Father's Name"></div>
+                        <div class="col-6"><input type="text" id="s-mother" class="form-control" placeholder="Mother's Name"></div>
+                        <div class="col-12"><input type="date" id="s-dob" class="form-control" placeholder="Date of Birth"></div>
                     </div>
                     <button class="btn btn-primary mt-2 w-100" onclick="addOrUpdateStudent(this)">Save Student Data</button>
                 </div>
@@ -391,6 +403,23 @@
                     </div>
                     <div id="class-student-list" class="mt-3"></div>
                 </div>
+
+                <div id="attendance-analytics-panel" class="card p-3 mb-4" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">📉 Low Attendance (last 30 days, below 75%)</h6>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadAttendanceAnalytics()"><i class="fas fa-sync-alt"></i></button>
+                    </div>
+                    <div id="attendance-low-list" class="mb-3">Loading...</div>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold small">Weekly Attendance Digest</div>
+                            <div class="text-muted small">Sends each parent a summary of their child's attendance over the last 7 days.</div>
+                        </div>
+                        <button class="btn btn-sm btn-warning text-nowrap" data-role="admin" style="display:none;" onclick="sendAttendanceDigestAll(this)">Send to All</button>
+                    </div>
+                </div>
+
                 <div id="student-attendance-view" style="display:none;">
                     <div class="card p-3 text-center">
                         <h5>Overall Attendance</h5>
@@ -458,6 +487,69 @@
                     <button class="btn btn-success mt-2 w-100" onclick="uploadMaterial(this)">Upload Material</button>
                 </div>
                 <div id="material-list">Loading materials...</div>
+            </div>
+
+            <div id="homework" class="section-panel">
+                <h3 class="fw-bold mb-4">📝 Homework</h3>
+                <div id="homework-post-form" class="card p-3 mb-4" style="display:none;">
+                    <h6>Post New Homework</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><select id="hw-class" class="form-select"></select></div>
+                        <div class="col-6"><input type="date" id="hw-due" class="form-control"></div>
+                        <div class="col-12"><input type="text" id="hw-title" class="form-control" placeholder="Title"></div>
+                        <div class="col-12"><textarea id="hw-desc" class="form-control" rows="2" placeholder="Description (optional)"></textarea></div>
+                        <div class="col-12"><input type="file" id="hw-attachment" class="form-control"></div>
+                    </div>
+                    <button class="btn btn-success mt-2 w-100" onclick="postHomework(this)">Post Homework</button>
+                </div>
+                <div id="homework-child-selector" class="mb-3"></div>
+                <div id="homework-list">Loading homework...</div>
+            </div>
+
+            <div id="report-cards" class="section-panel">
+                <h3 class="fw-bold mb-4">📄 Report Cards</h3>
+
+                <div id="rc-admin-pending" class="mb-4" style="display:none;">
+                    <h6>Pending Verification</h6>
+                    <div id="rc-pending-list">Loading...</div>
+                </div>
+
+                <div id="rc-staff-controls" class="card p-3 mb-4" style="display:none;">
+                    <h6>Create / Open Exam</h6>
+                    <div class="row g-2">
+                        <div class="col-6"><select id="rc-class" class="form-select" onchange="loadExamListForClass()"></select></div>
+                        <div class="col-6"><input type="text" id="rc-exam-name" class="form-control" placeholder="Exam Name (e.g. 1st Unit Test)"></div>
+                    </div>
+                    <div id="rc-subjects-builder" class="mt-2">
+                        <div class="small text-muted mb-1">Subjects (name + max marks) — applies to the whole class:</div>
+                        <div id="rc-subjects-rows"></div>
+                        <button class="btn btn-sm btn-outline-secondary mt-1" onclick="addSubjectRow()"><i class="fas fa-plus"></i> Add Subject</button>
+                    </div>
+                    <button class="btn btn-primary mt-3 w-100" onclick="saveExamConfig()">Save Exam / Subjects</button>
+
+                    <div id="rc-exam-list" class="mt-3"></div>
+                </div>
+
+                <div id="rc-grid-wrap" style="display:none;">
+                    <div class="card p-2 mb-2 d-flex flex-row justify-content-between align-items-center">
+                        <div>
+                            <strong id="rc-grid-title"></strong>
+                            <span id="rc-grid-status" class="badge ms-2"></span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="closeExamGrid()"><i class="fas fa-arrow-left"></i> Back</button>
+                    </div>
+                    <div id="rc-reject-note" class="alert alert-warning small" style="display:none;"></div>
+                    <div class="table-responsive"><table class="table table-sm align-middle bg-white" id="rc-grid-table"></table></div>
+                    <div id="rc-grid-actions" class="d-flex flex-wrap gap-2 mb-4"></div>
+                </div>
+
+                <div id="rc-child-selector" class="mb-3"></div>
+                <div id="rc-my-cards-list">Loading report cards...</div>
+
+                <div id="rc-card-view" style="display:none;">
+                    <button class="btn btn-sm btn-outline-primary mb-2" onclick="closeReportCardView()"><i class="fas fa-arrow-left me-1"></i>Back</button>
+                    <div id="rc-card-detail" class="card p-3"></div>
+                </div>
             </div>
 
             <div id="parent-panel" class="section-panel">
@@ -540,6 +632,12 @@
             </div>
             <div class="nav-item" id="nav-tt" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('timetable', 'Timetable')">
                 <i class="fas fa-calendar-week"></i>Timetable
+            </div>
+            <div class="nav-item" id="nav-hw" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('homework', 'Homework')">
+                <i class="fas fa-tasks"></i>Homework
+            </div>
+            <div class="nav-item" id="nav-rc" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('report-cards', 'Report Cards')">
+                <i class="fas fa-file-invoice"></i>Cards
             </div>
             <div class="nav-item" id="nav-chats" data-role="teacher,admin,parent,owner" style="display:none;" onclick="showSection('chat-hub', 'Chats')">
                 <i class="fas fa-comments"></i>Chats

@@ -272,7 +272,9 @@
             'fees': 'nav-fees', 
             'study-material': 'nav-mat',
             'timetable': 'nav-tt',
-            'chat-hub': 'nav-chats'
+            'chat-hub': 'nav-chats',
+            'homework': 'nav-hw',
+            'report-cards': 'nav-rc'
         };
 
         if(navMap[id] && document.getElementById(navMap[id])) document.getElementById(navMap[id]).classList.add('active');
@@ -289,6 +291,9 @@
         if (id === 'admin-teachers') loadParents();
         if (id === 'chat-hub') loadChatHub();
         if (id === 'oversight-panel') loadOversightPanel();
+        if (id === 'homework') loadHomeworkSection();
+        if (id === 'report-cards') loadReportCardsSection();
+        if (id === 'attendance') loadAttendanceAnalytics();
 
         if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
@@ -1217,7 +1222,10 @@ async function toggleMaintenanceMode() {
             id: studentIdInput, 
             password: document.getElementById('s-pass').value,
             classId: document.getElementById('s-class').value.trim(),
-            totalFees: parseFloat(document.getElementById('s-fees').value) || 0
+            totalFees: parseFloat(document.getElementById('s-fees').value) || 0,
+            fatherName: (document.getElementById('s-father') || {}).value || '',
+            motherName: (document.getElementById('s-mother') || {}).value || '',
+            dob: (document.getElementById('s-dob') || {}).value || ''
         };
 
         // 2. CLEAN VALIDATION: Check fields BEFORE touching network parameters
@@ -1249,7 +1257,7 @@ async function toggleMaintenanceMode() {
                 if (typeof loadStudentDirectoryClasswise === "function") loadStudentDirectoryClasswise();
             
                 // Clear out form inputs for the next entry
-                ['s-name', 's-id', 's-pass', 's-class', 's-fees'].forEach(id => {
+                ['s-name', 's-id', 's-pass', 's-class', 's-fees', 's-father', 's-mother', 's-dob'].forEach(id => {
                     const element = document.getElementById(id);
                     if (element) element.value = '';
                 });
@@ -1930,4 +1938,516 @@ function clearAppData() {
             const badge = document.getElementById('notif-badge');
             if (badge) badge.style.display = 'none';
         } catch (e) {}
+    }
+
+    // ==========================================
+    // HOMEWORK (Phase 3)
+    // ==========================================
+    async function loadHomeworkSection() {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const postForm = document.getElementById('homework-post-form');
+        const childSelector = document.getElementById('homework-child-selector');
+        childSelector.innerHTML = '';
+
+        if (user.role === 'admin' || user.role === 'teacher') {
+            postForm.style.display = 'block';
+            try {
+                const res = await authFetch('/api/classes');
+                const classes = await res.json();
+                document.getElementById('hw-class').innerHTML = classes.map(c => `<option value="${c.className}">${escapeHtml(c.className)}</option>`).join('') || '<option value="">No classes yet</option>';
+            } catch (e) {}
+            renderHomeworkList(await (await authFetch('/api/homework/mine')).json(), true);
+            return;
+        }
+
+        postForm.style.display = 'none';
+
+        if (user.role === 'student') {
+            renderHomeworkList(await (await authFetch('/api/homework/mine')).json(), false);
+            return;
+        }
+
+        if (user.role === 'parent') {
+            try {
+                const res = await authFetch('/api/parent/children');
+                const children = await res.json();
+                if (children.length === 0) { document.getElementById('homework-list').innerHTML = `<p class="text-muted small">No linked children yet.</p>`; return; }
+                childSelector.innerHTML = `
+                    <select id="hw-parent-child-select" class="form-select" onchange="loadParentChildHomework()">
+                        ${children.map(c => `<option value="${c.studentId}">${escapeHtml(c.name)}</option>`).join('')}
+                    </select>`;
+                loadParentChildHomework();
+            } catch (e) { document.getElementById('homework-list').innerHTML = "Error loading children."; }
+        }
+    }
+
+    async function loadParentChildHomework() {
+        const studentId = document.getElementById('hw-parent-child-select').value;
+        const res = await authFetch(`/api/homework/mine?studentId=${studentId}`);
+        renderHomeworkList(await res.json(), false);
+    }
+
+    function renderHomeworkList(items, isStaff) {
+        const list = document.getElementById('homework-list');
+        if (!items || items.length === 0) { list.innerHTML = `<div class="card p-3 text-muted small">No homework posted yet.</div>`; return; }
+        list.innerHTML = items.map(h => {
+            const dueBadge = h.dueDate
+                ? `<span class="badge ${h.overdue ? 'bg-danger' : (h.dueSoon ? 'bg-warning text-dark' : 'bg-secondary')}">Due ${h.dueDate}</span>`
+                : '';
+            const doneCheck = (!isStaff && h.done !== undefined)
+                ? `<div class="form-check mt-2">
+                       <input class="form-check-input" type="checkbox" id="hw-done-${h._id}" ${h.done ? 'checked' : ''} onchange="toggleHomeworkDone('${h._id}', this.checked)">
+                       <label class="form-check-label small" for="hw-done-${h._id}">${h.done ? 'Completed' : 'Mark as done'}</label>
+                   </div>` : '';
+            const delBtn = isStaff ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteHomework('${h._id}')"><i class="fas fa-trash"></i></button>` : '';
+            return `
+                <div class="card p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1 fw-bold">${escapeHtml(h.title)} <span class="badge bg-secondary">${escapeHtml(h.classId)}</span></h6>
+                            ${h.description ? `<p class="small mb-1">${escapeHtml(h.description)}</p>` : ''}
+                            <div class="text-muted small">By ${escapeHtml(h.teacherName || 'Teacher')} · ${new Date(h.createdAt).toLocaleDateString()}</div>
+                            ${h.attachmentUrl ? `<a href="${h.attachmentUrl}" target="_blank" class="small">📎 Attachment</a>` : ''}
+                            ${doneCheck}
+                        </div>
+                        <div class="text-end">${dueBadge}<div class="mt-2">${delBtn}</div></div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    async function postHomework(btn) {
+        const classId = document.getElementById('hw-class').value;
+        const title = document.getElementById('hw-title').value.trim();
+        const description = document.getElementById('hw-desc').value.trim();
+        const dueDate = document.getElementById('hw-due').value;
+        const fileInput = document.getElementById('hw-attachment');
+        if (!classId || !title) return alert("Class and title are required.");
+        const formData = new FormData();
+        formData.append('classId', classId);
+        formData.append('title', title);
+        formData.append('description', description);
+        if (dueDate) formData.append('dueDate', dueDate);
+        if (fileInput.files[0]) formData.append('attachment', fileInput.files[0]);
+
+        btn.disabled = true;
+        try {
+            const savedUser = JSON.parse(localStorage.getItem('currentUser'));
+            const res = await fetch('/api/homework', {
+                method: 'POST',
+                headers: { 'x-user-id': savedUser.id, 'x-session-id': savedUser.sessionId },
+                body: formData
+            });
+            const result = await res.json();
+            if (result.success) {
+                document.getElementById('hw-title').value = '';
+                document.getElementById('hw-desc').value = '';
+                document.getElementById('hw-due').value = '';
+                fileInput.value = '';
+                loadHomeworkSection();
+            } else alert(result.message || "Couldn't post homework.");
+        } catch (e) { alert("Couldn't post homework."); }
+        btn.disabled = false;
+    }
+
+    async function toggleHomeworkDone(id, done) {
+        try {
+            await authFetch(`/api/homework/${id}/status`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ done })
+            });
+        } catch (e) { alert("Couldn't update homework status."); }
+    }
+
+    async function deleteHomework(id) {
+        if (!confirm("Delete this homework?")) return;
+        try {
+            const res = await authFetch(`/api/homework/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.success) loadHomeworkSection(); else alert("Couldn't delete homework.");
+        } catch (e) { alert("Couldn't delete homework."); }
+    }
+
+    // ==========================================
+    // REPORT CARDS / EXAMS (Phase 3)
+    // ==========================================
+    let rcCurrentClass = null, rcCurrentExam = null, rcCurrentGridRows = [];
+
+    async function loadReportCardsSection() {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        document.getElementById('rc-grid-wrap').style.display = 'none';
+        document.getElementById('rc-card-view').style.display = 'none';
+
+        if (user.role === 'admin' || user.role === 'teacher') {
+            document.getElementById('rc-staff-controls').style.display = 'block';
+            document.getElementById('rc-child-selector').innerHTML = '';
+            document.getElementById('rc-my-cards-list').innerHTML = '';
+            try {
+                const res = await authFetch('/api/classes');
+                const classes = await res.json();
+                document.getElementById('rc-class').innerHTML = classes.map(c => `<option value="${c.className}">${escapeHtml(c.className)}</option>`).join('') || '<option value="">No classes yet</option>';
+            } catch (e) {}
+            if (document.getElementById('rc-subjects-rows').children.length === 0) addSubjectRow();
+            loadExamListForClass();
+            if (user.role === 'admin') {
+                document.getElementById('rc-admin-pending').style.display = 'block';
+                loadPendingExams();
+            }
+            return;
+        }
+
+        document.getElementById('rc-staff-controls').style.display = 'none';
+        document.getElementById('rc-admin-pending').style.display = 'none';
+
+        if (user.role === 'student') {
+            loadMyReportCards(user.id);
+        } else if (user.role === 'parent') {
+            try {
+                const res = await authFetch('/api/parent/children');
+                const children = await res.json();
+                if (children.length === 0) { document.getElementById('rc-my-cards-list').innerHTML = `<p class="text-muted small">No linked children yet.</p>`; return; }
+                document.getElementById('rc-child-selector').innerHTML = `
+                    <select id="rc-parent-child-select" class="form-select" onchange="loadMyReportCards(document.getElementById('rc-parent-child-select').value)">
+                        ${children.map(c => `<option value="${c.studentId}">${escapeHtml(c.name)}</option>`).join('')}
+                    </select>`;
+                loadMyReportCards(children[0].studentId);
+            } catch (e) { document.getElementById('rc-my-cards-list').innerHTML = "Error loading children."; }
+        }
+    }
+
+    function addSubjectRow(name, maxMarks) {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-1 rc-subject-row';
+        row.innerHTML = `
+            <div class="col-7"><input type="text" class="form-control form-control-sm rc-subj-name" placeholder="Subject name" value="${name ? escapeHtml(name) : ''}"></div>
+            <div class="col-3"><input type="number" class="form-control form-control-sm rc-subj-max" placeholder="Max" value="${maxMarks || 100}"></div>
+            <div class="col-2"><button class="btn btn-sm btn-outline-danger w-100" onclick="this.closest('.rc-subject-row').remove()"><i class="fas fa-times"></i></button></div>`;
+        document.getElementById('rc-subjects-rows').appendChild(row);
+    }
+
+    async function saveExamConfig() {
+        const classId = document.getElementById('rc-class').value;
+        const examName = document.getElementById('rc-exam-name').value.trim();
+        if (!classId || !examName) return alert("Class and exam name are required.");
+        const subjects = [...document.querySelectorAll('.rc-subject-row')].map(row => ({
+            name: row.querySelector('.rc-subj-name').value.trim(),
+            maxMarks: parseFloat(row.querySelector('.rc-subj-max').value) || 100
+        })).filter(s => s.name);
+        if (subjects.length === 0) return alert("Add at least one subject.");
+        try {
+            const res = await authFetch('/api/exams/config', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ classId, examName, subjects })
+            });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't save exam.");
+            loadExamListForClass();
+            openExamGrid(classId, examName);
+        } catch (e) { alert("Couldn't save exam."); }
+    }
+
+    async function loadExamListForClass() {
+        const classId = document.getElementById('rc-class').value;
+        const container = document.getElementById('rc-exam-list');
+        if (!classId) { container.innerHTML = ''; return; }
+        container.innerHTML = 'Loading exams...';
+        try {
+            const res = await authFetch(`/api/exams/configs/${classId}`);
+            const configs = await res.json();
+            container.innerHTML = configs.length === 0 ? `<p class="text-muted small mt-2">No exams for this class yet.</p>` :
+                `<div class="mt-2"><div class="small text-muted mb-1">Existing exams:</div>` +
+                configs.map(c => `
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                        <span>${escapeHtml(c.examName)} ${examStatusBadge(c.status)}</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="openExamGrid('${classId}', '${escapeHtml(c.examName).replace(/'/g, "\\'")}')">Open</button>
+                    </div>`).join('') + `</div>`;
+        } catch (e) { container.innerHTML = "Error loading exams."; }
+    }
+
+    function examStatusBadge(status) {
+        const map = { draft: 'bg-secondary', submitted: 'bg-warning text-dark', verified: 'bg-success' };
+        return `<span class="badge ${map[status] || 'bg-secondary'}">${status}</span>`;
+    }
+
+    async function openExamGrid(classId, examName) {
+        rcCurrentClass = classId; rcCurrentExam = examName;
+        document.getElementById('rc-grid-wrap').style.display = 'block';
+        document.getElementById('rc-grid-title').innerText = `${classId} — ${examName}`;
+        try {
+            const res = await authFetch(`/api/exams/${encodeURIComponent(classId)}/${encodeURIComponent(examName)}`);
+            const data = await res.json();
+            if (data.success === false) return alert(data.message || "Couldn't load exam.");
+            renderExamGrid(data);
+        } catch (e) { alert("Couldn't load exam."); }
+    }
+
+    function closeExamGrid() {
+        document.getElementById('rc-grid-wrap').style.display = 'none';
+        rcCurrentClass = null; rcCurrentExam = null;
+    }
+
+    function renderExamGrid(data) {
+        const { config, rows } = data;
+        rcCurrentGridRows = rows;
+        document.getElementById('rc-grid-status').outerHTML = `<span id="rc-grid-status" class="badge ms-2">${examStatusBadge(config.status)}</span>`;
+
+        const rejectBox = document.getElementById('rc-reject-note');
+        if (config.status === 'draft' && config.rejectNote) {
+            rejectBox.style.display = 'block';
+            rejectBox.innerText = `Sent back by admin: ${config.rejectNote}`;
+        } else {
+            rejectBox.style.display = 'none';
+        }
+
+        const editable = config.status === 'draft';
+        const table = document.getElementById('rc-grid-table');
+        let thead = `<thead><tr><th>Student</th>${config.subjects.map(s => `<th>${escapeHtml(s.name)}<br><small class="text-muted">/${s.maxMarks}</small></th>`).join('')}<th>Overall</th><th>%</th><th>Rank</th><th>Released</th></tr></thead>`;
+        let tbody = '<tbody>' + rows.map((r, i) => `
+            <tr>
+                <td>${escapeHtml(r.name)}<br><small class="text-muted">${r.studentId}</small></td>
+                ${config.subjects.map(s => `<td><input type="number" class="form-control form-control-sm rc-mark-input" style="min-width:70px;" data-row="${i}" data-subject="${escapeHtml(s.name)}" value="${r.marks[s.name] !== undefined ? r.marks[s.name] : ''}" ${editable ? '' : 'disabled'}></td>`).join('')}
+                <td>${r.overallMarks}/${r.overallTotal}</td>
+                <td>${r.percentage}%</td>
+                <td>${r.rank ? '#' + r.rank : '-'}</td>
+                <td>
+                    ${config.status === 'verified'
+                        ? `<div class="form-check form-switch">
+                               <input class="form-check-input" type="checkbox" ${r.released ? 'checked' : ''} onchange="toggleReleaseOne('${r.studentId}', this.checked)">
+                           </div>`
+                        : (r.released ? '<i class="fas fa-check text-success"></i>' : '-')}
+                </td>
+            </tr>`).join('') + '</tbody>';
+        table.innerHTML = thead + tbody;
+
+        const actions = document.getElementById('rc-grid-actions');
+        let html = '';
+        if (editable) {
+            html += `<button class="btn btn-primary" onclick="saveExamMarks()"><i class="fas fa-save me-1"></i>Save Marks</button>`;
+            html += `<button class="btn btn-warning" onclick="submitExamForVerification()"><i class="fas fa-paper-plane me-1"></i>Submit for Verification</button>`;
+        } else if (config.status === 'submitted') {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            html += `<span class="text-muted small align-self-center">Awaiting admin verification.</span>`;
+            if (user.role === 'admin') {
+                html += `<button class="btn btn-success" onclick="verifyExam()"><i class="fas fa-check-circle me-1"></i>Verify</button>`;
+                html += `<button class="btn btn-outline-danger" onclick="rejectExam()"><i class="fas fa-undo me-1"></i>Send Back</button>`;
+            }
+        } else if (config.status === 'verified') {
+            html += `<button class="btn btn-success" onclick="releaseAllCards()"><i class="fas fa-bullhorn me-1"></i>Release All to Parents/Students</button>`;
+        }
+        actions.innerHTML = html;
+    }
+
+    async function saveExamMarks() {
+        const inputs = [...document.querySelectorAll('.rc-mark-input')];
+        const byRow = {};
+        inputs.forEach(inp => {
+            const i = inp.dataset.row;
+            if (!byRow[i]) byRow[i] = { studentId: rcCurrentGridRows[i].studentId, marks: {} };
+            if (inp.value !== '') byRow[i].marks[inp.dataset.subject] = parseFloat(inp.value);
+        });
+        const entries = Object.values(byRow);
+        try {
+            const res = await authFetch(`/api/exams/${encodeURIComponent(rcCurrentClass)}/${encodeURIComponent(rcCurrentExam)}/marks`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ entries })
+            });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't save marks.");
+            alert("Marks saved.");
+            openExamGrid(rcCurrentClass, rcCurrentExam);
+        } catch (e) { alert("Couldn't save marks."); }
+    }
+
+    async function submitExamForVerification() {
+        if (!confirm("Submit this exam's marks to the admin for verification? Marks will be locked until reviewed.")) return;
+        try {
+            const res = await authFetch(`/api/exams/${encodeURIComponent(rcCurrentClass)}/${encodeURIComponent(rcCurrentExam)}/submit`, { method: 'POST' });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't submit exam.");
+            openExamGrid(rcCurrentClass, rcCurrentExam);
+        } catch (e) { alert("Couldn't submit exam."); }
+    }
+
+    async function verifyExam() {
+        if (!confirm("Verify this exam? A green verified stamp will appear on every report card.")) return;
+        try {
+            const res = await authFetch(`/api/admin/exams/${encodeURIComponent(rcCurrentClass)}/${encodeURIComponent(rcCurrentExam)}/verify`, { method: 'POST' });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't verify exam.");
+            openExamGrid(rcCurrentClass, rcCurrentExam);
+            loadPendingExams();
+        } catch (e) { alert("Couldn't verify exam."); }
+    }
+
+    async function rejectExam() {
+        const note = prompt("Optional note for the teacher about what needs fixing:") || '';
+        try {
+            const res = await authFetch(`/api/admin/exams/${encodeURIComponent(rcCurrentClass)}/${encodeURIComponent(rcCurrentExam)}/reject`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ note })
+            });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't send back exam.");
+            openExamGrid(rcCurrentClass, rcCurrentExam);
+            loadPendingExams();
+        } catch (e) { alert("Couldn't send back exam."); }
+    }
+
+    async function releaseAllCards() {
+        if (!confirm(`Release all report cards in this class to students/parents? You can still un-release individual students afterward using the toggle in the "Released" column.`)) return;
+        try {
+            const res = await authFetch(`/api/exams/${encodeURIComponent(rcCurrentClass)}/${encodeURIComponent(rcCurrentExam)}/release-all`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ excludeStudentIds: [] })
+            });
+            const result = await res.json();
+            if (!result.success) return alert(result.message || "Couldn't release cards.");
+            alert(`Released ${result.releasedCount} report card(s).`);
+            openExamGrid(rcCurrentClass, rcCurrentExam);
+        } catch (e) { alert("Couldn't release cards."); }
+    }
+
+    async function toggleReleaseOne(studentId, released) {
+        try {
+            const res = await authFetch(`/api/exams/${encodeURIComponent(rcCurrentClass)}/${encodeURIComponent(rcCurrentExam)}/release/${studentId}`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ released })
+            });
+            const result = await res.json();
+            if (!result.success) alert(result.message || "Couldn't update release status.");
+        } catch (e) { alert("Couldn't update release status."); }
+    }
+
+    async function loadPendingExams() {
+        const container = document.getElementById('rc-pending-list');
+        container.innerHTML = 'Loading...';
+        try {
+            const res = await authFetch('/api/admin/exams/pending');
+            const items = await res.json();
+            container.innerHTML = items.length === 0 ? `<p class="text-muted small">Nothing awaiting verification.</p>` :
+                items.map(c => `
+                    <div class="card p-2 mb-2 d-flex flex-row justify-content-between align-items-center">
+                        <span>${escapeHtml(c.classId)} — ${escapeHtml(c.examName)} <span class="text-muted small">by ${escapeHtml(c.submittedByName || '')}</span></span>
+                        <button class="btn btn-sm btn-primary" onclick="document.getElementById('rc-class').value='${escapeHtml(c.classId).replace(/'/g,"\\'")}'; openExamGrid('${escapeHtml(c.classId).replace(/'/g,"\\'")}','${escapeHtml(c.examName).replace(/'/g,"\\'")}');">Review</button>
+                    </div>`).join('');
+        } catch (e) { container.innerHTML = "Error."; }
+    }
+
+    async function loadMyReportCards(studentId) {
+        const container = document.getElementById('rc-my-cards-list');
+        container.innerHTML = 'Loading...';
+        try {
+            const url = studentId ? `/api/exams/mine?studentId=${studentId}` : '/api/exams/mine';
+            const res = await authFetch(url);
+            const items = await res.json();
+            container.innerHTML = items.length === 0 ? `<div class="card p-3 text-muted small">No report cards released yet.</div>` :
+                items.map(r => `
+                    <div class="card p-3 mb-2 d-flex flex-row justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1 fw-bold">${escapeHtml(r.examName)} <span class="badge bg-secondary">${escapeHtml(r.classId)}</span></h6>
+                            <div class="small text-muted">${r.overallMarks}/${r.overallTotal} · ${r.percentage}% ${r.rank ? '· Rank #' + r.rank : ''}</div>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="viewReportCard('${escapeHtml(r.classId).replace(/'/g,"\\'")}','${escapeHtml(r.examName).replace(/'/g,"\\'")}','${studentId || JSON.parse(localStorage.getItem('currentUser')).id}')">View</button>
+                    </div>`).join('');
+        } catch (e) { container.innerHTML = "Error loading report cards."; }
+    }
+
+    async function viewReportCard(classId, examName, studentId) {
+        try {
+            const res = await authFetch(`/api/report-card/${encodeURIComponent(classId)}/${encodeURIComponent(examName)}/${encodeURIComponent(studentId)}`);
+            const data = await res.json();
+            if (data.success === false) return alert(data.message || "Couldn't load report card.");
+            document.getElementById('rc-card-view').style.display = 'block';
+            document.getElementById('rc-card-detail').innerHTML = `
+                <div class="text-center mb-3">
+                    <img src="/logo.png" style="width:60px;">
+                    <h5 class="fw-bold mb-0">${escapeHtml(data.school)}</h5>
+                    <div class="small text-muted">Class: ${escapeHtml(data.classId)}</div>
+                </div>
+                <hr>
+                <p class="mb-1"><strong>Student ID:</strong> ${escapeHtml(data.student.studentId)}</p>
+                <p class="mb-1"><strong>Name:</strong> ${escapeHtml(data.student.name)}</p>
+                <p class="mb-1"><strong>Mother's Name:</strong> ${escapeHtml(data.student.motherName || 'N/A')}</p>
+                <p class="mb-1"><strong>Father's Name:</strong> ${escapeHtml(data.student.fatherName || 'N/A')}</p>
+                <p class="mb-3"><strong>Date of Birth:</strong> ${escapeHtml(data.student.dob || 'N/A')}</p>
+                <h6 class="fw-bold">Exam: ${escapeHtml(data.examName)}</h6>
+                <table class="table table-sm bg-white">
+                    <thead><tr><th>Subject</th><th>Marks</th><th>Max</th></tr></thead>
+                    <tbody>
+                        ${data.subjects.map(s => `<tr><td>${escapeHtml(s.name)}</td><td>${data.marks[s.name] !== undefined ? data.marks[s.name] : '-'}</td><td>${s.maxMarks}</td></tr>`).join('')}
+                    </tbody>
+                </table>
+                <p class="fw-bold mb-1">Overall: ${data.overallMarks} / ${data.overallTotal}</p>
+                <p class="fw-bold mb-1">Percentage: ${data.percentage}%</p>
+                ${data.rank ? `<p class="fw-bold text-warning mb-1">Class Rank: #${data.rank}</p>` : ''}
+                ${data.verified
+                    ? `<p class="fw-bold text-success mb-3"><i class="fas fa-check-circle"></i> Verified by Admin${data.verifiedByName ? ' — ' + escapeHtml(data.verifiedByName) : ''}</p>`
+                    : `<p class="text-muted small mb-3">Pending admin verification</p>`}
+                <button class="btn btn-primary w-100" onclick="downloadReportCardPdf('${escapeHtml(classId).replace(/'/g,"\\'")}','${escapeHtml(examName).replace(/'/g,"\\'")}','${escapeHtml(studentId).replace(/'/g,"\\'")}', this)"><i class="fas fa-file-pdf me-1"></i>Download PDF (watermarked)</button>
+            `;
+        } catch (e) { alert("Couldn't load report card."); }
+    }
+
+    async function downloadReportCardPdf(classId, examName, studentId, btn) {
+        if (btn) { btn.disabled = true; btn.innerText = 'Generating PDF...'; }
+        try {
+            const res = await authFetch(`/api/report-card/${encodeURIComponent(classId)}/${encodeURIComponent(examName)}/${encodeURIComponent(studentId)}/pdf`);
+            if (!res.ok) { alert("Couldn't generate PDF."); return; }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e) { alert("Couldn't generate PDF."); }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-pdf me-1"></i>Download PDF (watermarked)'; }
+    }
+
+    function closeReportCardView() {
+        document.getElementById('rc-card-view').style.display = 'none';
+    }
+
+    // ==========================================
+    // ATTENDANCE ANALYTICS + DIGEST (Phase 3)
+    // ==========================================
+    async function loadAttendanceAnalytics() {
+        const user = JSON.parse(localStorage.getItem('currentUser'));
+        const panel = document.getElementById('attendance-analytics-panel');
+        if (!panel) return;
+        if (!['admin', 'teacher'].includes(user.role)) { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+
+        const sendAllBtn = panel.querySelector('[onclick="sendAttendanceDigestAll(this)"]');
+        if (sendAllBtn) sendAllBtn.style.display = user.role === 'admin' ? 'inline-block' : 'none';
+
+        const list = document.getElementById('attendance-low-list');
+        list.innerHTML = 'Loading...';
+        try {
+            const res = await authFetch('/api/admin/attendance/low');
+            const data = await res.json();
+            const flagged = data.flagged || [];
+            list.innerHTML = flagged.length === 0 ? `<p class="text-muted small mb-0">No students below 75% attendance right now. 🎉</p>` :
+                flagged.map(s => `
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                        <div>
+                            <strong>${escapeHtml(s.name)}</strong> <span class="badge bg-secondary">${escapeHtml(s.classId)}</span>
+                            <div class="small text-muted">${s.presentCount}/${s.totalCount} days (${s.attendancePct}%)</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-warning" onclick="sendAttendanceDigestOne('${s.studentId}', this)">Send Digest</button>
+                    </div>`).join('');
+        } catch (e) { list.innerHTML = "Error loading attendance analytics."; }
+    }
+
+    async function sendAttendanceDigestOne(studentId, btn) {
+        btn.disabled = true;
+        try {
+            const res = await authFetch(`/api/admin/attendance/digest/send/${studentId}`, { method: 'POST' });
+            const result = await res.json();
+            alert(result.message || (result.sent ? "Digest sent." : "Skipped."));
+        } catch (e) { alert("Couldn't send digest."); }
+        btn.disabled = false;
+    }
+
+    async function sendAttendanceDigestAll(btn) {
+        if (!confirm("Send a weekly attendance digest to every parent in the school?")) return;
+        btn.disabled = true;
+        try {
+            const res = await authFetch('/api/admin/attendance/digest/send-all', { method: 'POST' });
+            const result = await res.json();
+            alert(`Sent: ${result.sentCount}, Skipped (already sent recently / no data): ${result.skippedCount}`);
+        } catch (e) { alert("Couldn't send digests."); }
+        btn.disabled = false;
     }

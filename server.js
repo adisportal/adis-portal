@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 3000;
 const multer = require('multer');
 const path = require('path');
 const ardosis = require('./ardosis-client');
+const PDFDocument = require('pdfkit');
 
 // Setup storage engine
 const storage = multer.diskStorage({
@@ -665,7 +666,7 @@ app.get('/api/parent/children', requireAuth, requireRole('parent'), async (req, 
 // =======================================================================
 app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
     try {
-        let { id, password, name, classId, totalFees, feeDueDate } = req.body;
+        let { id, password, name, classId, totalFees, feeDueDate, fatherName, motherName, dob } = req.body;
         if (!name || name.trim() === "") {
             return res.status(400).json({ success: false, message: "Student name is required." });
         }
@@ -687,6 +688,9 @@ app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teac
             schoolId
         };
         if (feeDueDate) updateData.feeDueDate = feeDueDate;
+        if (fatherName !== undefined) updateData.fatherName = fatherName;
+        if (motherName !== undefined) updateData.motherName = motherName;
+        if (dob !== undefined) updateData.dob = dob;
         if (password && password.trim() !== "") {
             updateData.password = await bcrypt.hash(password, 10);
         }
@@ -1646,6 +1650,736 @@ app.post('/api/notifications/mark-read', requireAuth, async (req, res) => {
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================================
+// HOMEWORK / ASSIGNMENTS (Phase 3)
+// One document per assignment posted by a teacher for a class. Per-student
+// completion is tracked separately (homeworkStatus) so a checklist can be
+// rendered for the student/parent view without bloating the homework doc.
+// =======================================================================
+async function notifyParentsOfClass(schoolId, classId, type, message) {
+    try {
+        const students = await db.collection('users').find(
+            { role: 'student', schoolId, classId }, { projection: { studentId: 1 } }
+        ).toArray();
+        for (const s of students) {
+            await notifyParentsOfStudent(schoolId, s.studentId, type, message);
+            await notifyUser(schoolId, s.studentId, type, message);
+        }
+    } catch (e) {
+        console.error('Class notify failed:', e.message);
+    }
+}
+
+app.post('/api/homework', requireAuth, requireRole('admin', 'teacher'), upload.single('attachment'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, title, description, dueDate } = req.body;
+        if (!classId || !title || !title.trim()) {
+            return res.status(400).json({ success: false, message: "Class and title are required." });
+        }
+        const doc = {
+            schoolId, classId,
+            teacherId: req.currentUser.studentId,
+            teacherName: req.currentUser.name,
+            title: title.trim(),
+            description: description || '',
+            dueDate: dueDate || null,
+            attachmentUrl: req.file ? `/uploads/${req.file.filename}` : null,
+            createdAt: new Date()
+        };
+        const result = await db.collection('homework').insertOne(doc);
+        await logAudit(req, 'homework_post', { classId, title: doc.title });
+        notifyParentsOfClass(schoolId, classId, 'homework', `New homework posted for ${classId}: "${doc.title}"${dueDate ? ' (due ' + dueDate + ')' : ''}.`);
+        res.json({ success: true, homework: { ...doc, _id: result.insertedId } });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.delete('/api/homework/:id', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const hw = await db.collection('homework').findOne({ _id: new ObjectId(req.params.id), schoolId: req.currentUser.schoolId });
+        if (!hw) return res.status(404).json({ success: false, message: "Homework not found." });
+        if (req.currentUser.role === 'teacher' && hw.teacherId !== req.currentUser.studentId) {
+            return res.status(403).json({ success: false, message: "You can only delete homework you posted." });
+        }
+        await db.collection('homework').deleteOne({ _id: hw._id });
+        await db.collection('homeworkStatus').deleteMany({ homeworkId: String(hw._id) });
+        await logAudit(req, 'homework_delete', { targetId: req.params.id });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// Merge homework with a given student's completion flags.
+async function enrichHomeworkForStudent(items, studentId) {
+    const ids = items.map(h => String(h._id));
+    const statuses = await db.collection('homeworkStatus').find({ homeworkId: { $in: ids }, studentId }).toArray();
+    const doneMap = Object.fromEntries(statuses.map(s => [s.homeworkId, s.done]));
+    const today = new Date().toISOString().slice(0, 10);
+    return items.map(h => {
+        const done = !!doneMap[String(h._id)];
+        let dueSoon = false;
+        if (h.dueDate && !done) {
+            const diffDays = (new Date(h.dueDate) - new Date(today)) / (1000 * 60 * 60 * 24);
+            dueSoon = diffDays <= 2; // due within 2 days, or already overdue
+        }
+        return { ...h, done, dueSoon, overdue: !!(h.dueDate && h.dueDate < today && !done) };
+    });
+}
+
+app.get('/api/homework/class/:classId', requireAuth, async (req, res) => {
+    try {
+        const items = await db.collection('homework')
+            .find({ classId: req.params.classId, schoolId: req.currentUser.schoolId })
+            .sort({ createdAt: -1 }).toArray();
+        res.json(items);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// Role-aware "my homework": teacher gets what they posted, student gets
+// their class's list with completion state merged in, parent needs
+// ?studentId= (mirrors the "My Children" / Timetable pattern).
+app.get('/api/homework/mine', requireAuth, async (req, res) => {
+    try {
+        const user = req.currentUser;
+        if (user.role === 'teacher') {
+            const items = await db.collection('homework')
+                .find({ teacherId: user.studentId, schoolId: user.schoolId })
+                .sort({ createdAt: -1 }).toArray();
+            return res.json(items);
+        }
+        if (user.role === 'student') {
+            const items = await db.collection('homework')
+                .find({ classId: user.classId, schoolId: user.schoolId })
+                .sort({ createdAt: -1 }).toArray();
+            return res.json(await enrichHomeworkForStudent(items, user.studentId));
+        }
+        if (user.role === 'parent') {
+            const studentId = req.query.studentId;
+            if (!studentId || !Array.isArray(user.linkedStudentIds) || !user.linkedStudentIds.includes(studentId)) {
+                return res.status(403).json({ success: false, message: "Not linked to this student." });
+            }
+            const student = await db.collection('users').findOne({ studentId, role: 'student', schoolId: user.schoolId });
+            if (!student) return res.json([]);
+            const items = await db.collection('homework')
+                .find({ classId: student.classId, schoolId: user.schoolId })
+                .sort({ createdAt: -1 }).toArray();
+            return res.json(await enrichHomeworkForStudent(items, studentId));
+        }
+        if (user.role === 'admin') {
+            const items = await db.collection('homework').find({ schoolId: user.schoolId }).sort({ createdAt: -1 }).toArray();
+            return res.json(items);
+        }
+        res.json([]);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
+// Student marks their own homework done/not-done. Parents view only.
+app.post('/api/homework/:id/status', requireAuth, requireRole('student'), async (req, res) => {
+    try {
+        const { done } = req.body;
+        const hw = await db.collection('homework').findOne({ _id: new ObjectId(req.params.id), schoolId: req.currentUser.schoolId });
+        if (!hw || hw.classId !== req.currentUser.classId) return res.status(404).json({ success: false, message: "Homework not found." });
+        await db.collection('homeworkStatus').updateOne(
+            { homeworkId: String(hw._id), studentId: req.currentUser.studentId },
+            { $set: { homeworkId: String(hw._id), studentId: req.currentUser.studentId, schoolId: req.currentUser.schoolId, done: !!done, doneAt: done ? new Date() : null } },
+            { upsert: true }
+        );
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================================
+// REPORT CARDS / EXAM RESULTS (Phase 3)
+//
+// examConfigs: one document per (schoolId, classId, examName) — the
+// subject list + max marks a teacher defines once for the whole class,
+// plus a workflow status: draft -> submitted -> verified.
+// examMarks: one document per student per exam, holding that student's
+// marks-per-subject plus server-computed overallMarks/percentage/rank
+// and a per-student `released` flag (a teacher can hold back an
+// individual card even after "release all").
+// =======================================================================
+function computeExamTotals(marks, subjects) {
+    let overallMarks = 0, overallTotal = 0;
+    subjects.forEach(sub => {
+        overallTotal += Number(sub.maxMarks) || 0;
+        const m = marks && marks[sub.name] !== undefined && marks[sub.name] !== null && marks[sub.name] !== ''
+            ? Number(marks[sub.name]) : 0;
+        overallMarks += isNaN(m) ? 0 : m;
+    });
+    const percentage = overallTotal > 0 ? Math.round((overallMarks / overallTotal) * 10000) / 100 : 0;
+    return { overallMarks, overallTotal, percentage };
+}
+
+// Dense top-3 ranking by percentage descending — ties share a rank.
+function assignRanks(rows) {
+    const sorted = [...rows].sort((a, b) => b.percentage - a.percentage);
+    let rank = 0, lastPct = null, seen = 0;
+    const rankByStudent = {};
+    for (const r of sorted) {
+        seen++;
+        if (r.percentage !== lastPct) { rank = seen; lastPct = r.percentage; }
+        if (rank <= 3) rankByStudent[r.studentId] = rank;
+    }
+    return rankByStudent;
+}
+
+async function ensureExamMarksForClass(schoolId, classId, examName) {
+    const students = await db.collection('users').find({ role: 'student', schoolId, classId }, { projection: { studentId: 1 } }).toArray();
+    const existing = await db.collection('examMarks').find({ schoolId, classId, examName }).project({ studentId: 1 }).toArray();
+    const existingIds = new Set(existing.map(e => e.studentId));
+    const missing = students.filter(s => !existingIds.has(s.studentId));
+    if (missing.length > 0) {
+        await db.collection('examMarks').insertMany(missing.map(s => ({
+            schoolId, classId, examName, studentId: s.studentId,
+            marks: {}, overallMarks: 0, overallTotal: 0, percentage: 0, rank: null,
+            released: false, updatedAt: new Date()
+        })));
+    }
+}
+
+// Create (or, while still draft, update the subject list of) an exam.
+app.post('/api/exams/config', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName, subjects } = req.body;
+        if (!classId || !examName || !examName.trim() || !Array.isArray(subjects) || subjects.length === 0) {
+            return res.status(400).json({ success: false, message: "Class, exam name, and at least one subject are required." });
+        }
+        const cleanSubjects = subjects
+            .filter(s => s && s.name && String(s.name).trim())
+            .map(s => ({ name: String(s.name).trim(), maxMarks: Number(s.maxMarks) || 100 }));
+        if (cleanSubjects.length === 0) {
+            return res.status(400).json({ success: false, message: "At least one valid subject is required." });
+        }
+        const name = examName.trim();
+        const existing = await db.collection('examConfigs').findOne({ schoolId, classId, examName: name });
+        if (existing && existing.status !== 'draft') {
+            return res.status(400).json({ success: false, message: `This exam is already ${existing.status} and its subject list is locked.` });
+        }
+        await db.collection('examConfigs').updateOne(
+            { schoolId, classId, examName: name },
+            {
+                $set: { subjects: cleanSubjects, status: 'draft', updatedAt: new Date() },
+                $setOnInsert: { schoolId, classId, examName: name, createdBy: req.currentUser.studentId, createdByName: req.currentUser.name, createdAt: new Date() }
+            },
+            { upsert: true }
+        );
+        await ensureExamMarksForClass(schoolId, classId, name);
+        await logAudit(req, 'exam_config_save', { classId, examName: name });
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.get('/api/exams/configs/:classId', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const configs = await db.collection('examConfigs')
+            .find({ schoolId: req.currentUser.schoolId, classId: req.params.classId })
+            .sort({ createdAt: -1 }).toArray();
+        res.json(configs);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// Full grid: exam config + every student's marks/overall/percentage/rank.
+app.get('/api/exams/:classId/:examName', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName } = req.params;
+        const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+        if (!config) return res.status(404).json({ success: false, message: "Exam not found." });
+        await ensureExamMarksForClass(schoolId, classId, examName);
+        const marksRows = await db.collection('examMarks').find({ schoolId, classId, examName }).toArray();
+        const students = await db.collection('users').find(
+            { role: 'student', schoolId, classId }, { projection: { studentId: 1, name: 1 } }
+        ).sort({ name: 1 }).toArray();
+        const marksByStudent = Object.fromEntries(marksRows.map(m => [m.studentId, m]));
+        const rows = students.map(s => {
+            const m = marksByStudent[s.studentId] || { marks: {}, overallMarks: 0, overallTotal: 0, percentage: 0, rank: null, released: false };
+            return {
+                studentId: s.studentId, name: s.name,
+                marks: m.marks || {}, overallMarks: m.overallMarks || 0, overallTotal: m.overallTotal || 0,
+                percentage: m.percentage || 0, rank: m.rank || null, released: !!m.released
+            };
+        });
+        res.json({ config, rows });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// Bulk-save marks for a class. Server computes overall/percentage for
+// every row and re-ranks the whole class in one pass. Locked once the
+// exam has moved past 'draft'.
+app.post('/api/exams/:classId/:examName/marks', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName } = req.params;
+        const { entries } = req.body; // [{ studentId, marks: { subject: number } }]
+        const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+        if (!config) return res.status(404).json({ success: false, message: "Exam not found." });
+        if (config.status !== 'draft') {
+            return res.status(400).json({ success: false, message: `Marks are locked — this exam is ${config.status}.` });
+        }
+        if (!Array.isArray(entries)) return res.status(400).json({ success: false, message: "entries[] required." });
+
+        // Compute totals for the entries being saved, then re-read the
+        // whole class so ranking reflects everyone, not just this save.
+        for (const entry of entries) {
+            const totals = computeExamTotals(entry.marks || {}, config.subjects);
+            await db.collection('examMarks').updateOne(
+                { schoolId, classId, examName, studentId: entry.studentId },
+                { $set: { marks: entry.marks || {}, ...totals, updatedAt: new Date() } },
+                { upsert: true }
+            );
+        }
+        const allRows = await db.collection('examMarks').find({ schoolId, classId, examName }).toArray();
+        const rankByStudent = assignRanks(allRows);
+        for (const r of allRows) {
+            const newRank = rankByStudent[r.studentId] || null;
+            if (r.rank !== newRank) {
+                await db.collection('examMarks').updateOne({ _id: r._id }, { $set: { rank: newRank } });
+            }
+        }
+        await logAudit(req, 'exam_marks_save', { classId, examName, count: entries.length });
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.post('/api/exams/:classId/:examName/submit', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName } = req.params;
+        const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+        if (!config) return res.status(404).json({ success: false, message: "Exam not found." });
+        if (config.status !== 'draft') return res.status(400).json({ success: false, message: "Only a draft exam can be submitted." });
+        await db.collection('examConfigs').updateOne(
+            { _id: config._id },
+            { $set: { status: 'submitted', submittedAt: new Date(), submittedBy: req.currentUser.studentId, submittedByName: req.currentUser.name } }
+        );
+        await logAudit(req, 'exam_submit', { classId, examName });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// Admin: exams awaiting verification across the school.
+app.get('/api/admin/exams/pending', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const items = await db.collection('examConfigs')
+            .find({ schoolId: req.currentUser.schoolId, status: 'submitted' })
+            .sort({ submittedAt: -1 }).toArray();
+        res.json(items);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+app.post('/api/admin/exams/:classId/:examName/verify', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName } = req.params;
+        const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+        if (!config) return res.status(404).json({ success: false, message: "Exam not found." });
+        if (config.status !== 'submitted') return res.status(400).json({ success: false, message: "Only a submitted exam can be verified." });
+        await db.collection('examConfigs').updateOne(
+            { _id: config._id },
+            { $set: { status: 'verified', verifiedAt: new Date(), verifiedBy: req.currentUser.studentId, verifiedByName: req.currentUser.name } }
+        );
+        await logAudit(req, 'exam_verify', { classId, examName });
+        notifyUser(schoolId, config.createdBy, 'exam', `"${examName}" for ${classId} was verified by admin. You can now release report cards.`);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.post('/api/admin/exams/:classId/:examName/reject', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName } = req.params;
+        const { note } = req.body;
+        const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+        if (!config) return res.status(404).json({ success: false, message: "Exam not found." });
+        if (config.status !== 'submitted') return res.status(400).json({ success: false, message: "Only a submitted exam can be rejected." });
+        await db.collection('examConfigs').updateOne(
+            { _id: config._id },
+            { $set: { status: 'draft', rejectNote: note || '', rejectedAt: new Date() } }
+        );
+        await logAudit(req, 'exam_reject', { classId, examName });
+        notifyUser(schoolId, config.createdBy, 'exam', `"${examName}" for ${classId} was sent back for corrections by admin.${note ? ' Note: ' + note : ''}`);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// Release every card in the class/exam to parents+students, except any
+// studentIds a teacher explicitly wants to hold back.
+app.post('/api/exams/:classId/:examName/release-all', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName } = req.params;
+        const excludeStudentIds = Array.isArray(req.body.excludeStudentIds) ? req.body.excludeStudentIds : [];
+        const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+        if (!config) return res.status(404).json({ success: false, message: "Exam not found." });
+        if (config.status !== 'verified') return res.status(400).json({ success: false, message: "Only a verified exam can be released." });
+
+        const result = await db.collection('examMarks').updateMany(
+            { schoolId, classId, examName, studentId: { $nin: excludeStudentIds } },
+            { $set: { released: true, releasedAt: new Date() } }
+        );
+        const released = await db.collection('examMarks').find(
+            { schoolId, classId, examName, studentId: { $nin: excludeStudentIds } }, { projection: { studentId: 1 } }
+        ).toArray();
+        for (const r of released) {
+            notifyUser(schoolId, r.studentId, 'exam', `Your "${examName}" report card is now available.`);
+            notifyParentsOfStudent(schoolId, r.studentId, 'exam', `The "${examName}" report card for your child is now available.`);
+        }
+        await logAudit(req, 'exam_release_all', { classId, examName, released: result.modifiedCount, held: excludeStudentIds.length });
+        res.json({ success: true, releasedCount: released.length });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// Per-student release toggle — a teacher's individual control even after
+// (or instead of) a class-wide release.
+app.post('/api/exams/:classId/:examName/release/:studentId', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const { classId, examName, studentId } = req.params;
+        const { released } = req.body;
+        const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+        if (!config) return res.status(404).json({ success: false, message: "Exam not found." });
+        if (config.status !== 'verified') return res.status(400).json({ success: false, message: "Only a verified exam's cards can be released." });
+        const result = await db.collection('examMarks').updateOne(
+            { schoolId, classId, examName, studentId },
+            { $set: { released: !!released, releasedAt: released ? new Date() : null } }
+        );
+        if (result.matchedCount === 0) return res.status(404).json({ success: false, message: "Student not found in this exam." });
+        if (released) {
+            notifyUser(schoolId, studentId, 'exam', `Your "${examName}" report card is now available.`);
+            notifyParentsOfStudent(schoolId, studentId, 'exam', `The "${examName}" report card for your child is now available.`);
+        }
+        await logAudit(req, 'exam_release_toggle', { classId, examName, studentId, released: !!released });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// Student's own released report cards; parent needs ?studentId=.
+app.get('/api/exams/mine', requireAuth, async (req, res) => {
+    try {
+        const user = req.currentUser;
+        let studentId;
+        if (user.role === 'student') {
+            studentId = user.studentId;
+        } else if (user.role === 'parent') {
+            studentId = req.query.studentId;
+            if (!studentId || !Array.isArray(user.linkedStudentIds) || !user.linkedStudentIds.includes(studentId)) {
+                return res.status(403).json({ success: false, message: "Not linked to this student." });
+            }
+        } else {
+            return res.json([]);
+        }
+        const rows = await db.collection('examMarks')
+            .find({ schoolId: user.schoolId, studentId, released: true })
+            .sort({ updatedAt: -1 }).toArray();
+        res.json(rows.map(r => ({
+            classId: r.classId, examName: r.examName, overallMarks: r.overallMarks,
+            overallTotal: r.overallTotal, percentage: r.percentage, rank: r.rank, releasedAt: r.releasedAt
+        })));
+    } catch (e) {
+        console.error(e);
+        res.status(500).json([]);
+    }
+});
+
+// Shared authorization + data-assembly for both the JSON detail view and
+// the PDF export below.
+async function loadReportCardData(req, res) {
+    const schoolId = req.currentUser.schoolId;
+    const { classId, examName, studentId } = req.params;
+    const config = await db.collection('examConfigs').findOne({ schoolId, classId, examName });
+    if (!config) { res.status(404).json({ success: false, message: "Exam not found." }); return null; }
+    const markRow = await db.collection('examMarks').findOne({ schoolId, classId, examName, studentId });
+    if (!markRow) { res.status(404).json({ success: false, message: "Report card not found." }); return null; }
+
+    const isStaff = ['admin', 'teacher'].includes(req.currentUser.role);
+    if (!isStaff) {
+        const isSelf = req.currentUser.role === 'student' && req.currentUser.studentId === studentId;
+        const isParent = req.currentUser.role === 'parent' && Array.isArray(req.currentUser.linkedStudentIds) && req.currentUser.linkedStudentIds.includes(studentId);
+        if (!isSelf && !isParent) { res.status(403).json({ success: false, message: "Not authorized for this record." }); return null; }
+        if (!markRow.released) { res.status(403).json({ success: false, message: "This report card hasn't been released yet." }); return null; }
+    }
+
+    const student = await db.collection('users').findOne({ studentId, schoolId }, { projection: PUBLIC_PROJECTION });
+    const school = await db.collection('schools').findOne({ schoolId });
+    return {
+        school: school ? school.name : 'Ashwamedh Dream International School',
+        classId, examName,
+        student: {
+            studentId, name: student ? student.name : studentId,
+            fatherName: (student && student.fatherName) || '',
+            motherName: (student && student.motherName) || '',
+            dob: (student && student.dob) || ''
+        },
+        subjects: config.subjects,
+        marks: markRow.marks || {},
+        overallMarks: markRow.overallMarks || 0,
+        overallTotal: markRow.overallTotal || 0,
+        percentage: markRow.percentage || 0,
+        rank: markRow.rank || null,
+        verified: config.status === 'verified',
+        verifiedByName: config.verifiedByName || null,
+        released: !!markRow.released
+    };
+}
+
+app.get('/api/report-card/:classId/:examName/:studentId', requireAuth, async (req, res) => {
+    try {
+        const data = await loadReportCardData(req, res);
+        if (!data) return; // response already sent
+        res.json(data);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.get('/api/report-card/:classId/:examName/:studentId/pdf', requireAuth, async (req, res) => {
+    try {
+        const data = await loadReportCardData(req, res);
+        if (!data) return; // response already sent
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${data.student.studentId}-${data.examName.replace(/\s+/g, '_')}-report-card.pdf"`);
+
+        const doc = new PDFDocument({ size: 'A4', margin: 40 });
+        doc.pipe(res);
+
+        const logoPath = path.join(__dirname, 'public', 'logo.png');
+        const pageWidth = doc.page.width;
+        const pageHeight = doc.page.height;
+
+        // Permanent watermark: school logo, centered, low opacity, behind
+        // everything else — this is what makes the exported PDF resistant
+        // to being screenshot-cropped and passed off without the logo.
+        try {
+            const wSize = 320;
+            doc.opacity(0.08).image(logoPath, (pageWidth - wSize) / 2, (pageHeight - wSize) / 2, { width: wSize });
+        } catch (e) { /* logo missing — continue without watermark */ }
+        doc.opacity(1);
+
+        // Header
+        try { doc.image(logoPath, 40, 36, { width: 56 }); } catch (e) {}
+        doc.fillColor('#101A33').font('Helvetica-Bold').fontSize(18).text(data.school, 105, 40, { width: pageWidth - 150 });
+        doc.font('Helvetica').fontSize(12).fillColor('#333').text(`Class: ${data.classId}`, 105, 64);
+        doc.moveTo(40, 100).lineTo(pageWidth - 40, 100).strokeColor('#101A33').lineWidth(1.5).stroke();
+
+        // Student details
+        let y = 114;
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#101A33');
+        const detailLine = (label, value) => {
+            doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#101A33').text(`${label}: `, 40, y, { continued: true });
+            doc.font('Helvetica').fillColor('#222').text(value || 'N/A');
+            y += 17;
+        };
+        detailLine('Student ID', data.student.studentId);
+        detailLine('Student Name', data.student.name);
+        detailLine('Class', data.classId);
+        detailLine('Mother\'s Name', data.student.motherName);
+        detailLine('Father\'s Name', data.student.fatherName);
+        detailLine('Date of Birth', data.student.dob);
+
+        y += 6;
+        doc.font('Helvetica-Bold').fontSize(13).fillColor('#101A33').text(`Exam: ${data.examName}`, 40, y);
+        y += 24;
+
+        // Subject-wise marks table
+        const tableX = 40, tableW = pageWidth - 80;
+        const col1 = tableX, col2 = tableX + tableW * 0.55, col3 = tableX + tableW * 0.77;
+        doc.rect(tableX, y, tableW, 22).fill('#101A33');
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(10.5);
+        doc.text('Subject', col1 + 8, y + 6);
+        doc.text('Marks Obtained', col2, y + 6, { width: tableW * 0.22, align: 'center' });
+        doc.text('Max Marks', col3, y + 6, { width: tableW * 0.23, align: 'center' });
+        y += 22;
+
+        doc.font('Helvetica').fontSize(10.5);
+        data.subjects.forEach((sub, i) => {
+            const rowH = 20;
+            if (i % 2 === 1) doc.rect(tableX, y, tableW, rowH).fill('#F4F1EA');
+            doc.fillColor('#222');
+            doc.text(sub.name, col1 + 8, y + 5, { width: tableW * 0.5 });
+            const obtained = data.marks[sub.name] !== undefined && data.marks[sub.name] !== null ? data.marks[sub.name] : '-';
+            doc.text(String(obtained), col2, y + 5, { width: tableW * 0.22, align: 'center' });
+            doc.text(String(sub.maxMarks), col3, y + 5, { width: tableW * 0.23, align: 'center' });
+            y += rowH;
+        });
+        doc.rect(tableX, y, tableW, 1).fill('#101A33');
+        y += 12;
+
+        // Overall summary
+        doc.font('Helvetica-Bold').fontSize(12).fillColor('#101A33');
+        doc.text(`Overall Marks: ${data.overallMarks} / ${data.overallTotal}`, tableX, y);
+        y += 18;
+        doc.text(`Percentage: ${data.percentage}%`, tableX, y);
+        y += 18;
+        if (data.rank) {
+            doc.fillColor('#B8860B').text(`Class Rank: #${data.rank}`, tableX, y);
+            y += 18;
+        }
+
+        // Verification stamp
+        y += 10;
+        if (data.verified) {
+            doc.fillColor('#1E7A34').font('Helvetica-Bold').fontSize(12)
+                .text(`\u2714  Verified by Admin${data.verifiedByName ? ' — ' + data.verifiedByName : ''}`, tableX, y);
+        } else {
+            doc.fillColor('#999').font('Helvetica-Oblique').fontSize(10).text('Pending admin verification', tableX, y);
+        }
+
+        doc.fontSize(8).fillColor('#999').text(
+            `Generated by ADIS Portal on ${new Date().toLocaleDateString()}`,
+            40, pageHeight - 50, { width: pageWidth - 80, align: 'center' }
+        );
+
+        doc.end();
+        await logAudit(req, 'report_card_pdf_export', { classId: data.classId, examName: data.examName, studentId: data.student.studentId });
+    } catch (e) {
+        console.error(e);
+        if (!res.headersSent) res.status(500).json({ success: false, message: "Could not generate PDF." });
+    }
+});
+
+// =======================================================================
+// ATTENDANCE ANALYTICS + DIGEST (Phase 3)
+// Aggregation over the existing attendance collection, plus an
+// admin-triggered weekly digest to parents (reuses the notification
+// system). Same "no real cron on Render free tier" caveat as fee
+// reminders — this is a button, not a scheduled job.
+// =======================================================================
+app.get('/api/admin/attendance/low', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const days = parseInt(req.query.days) || 30;
+        const threshold = parseFloat(req.query.threshold) || 75;
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+        const sinceStr = since.toISOString().slice(0, 10);
+
+        let studentQuery = { role: 'student', schoolId };
+        if (req.currentUser.role === 'teacher') studentQuery.classId = req.currentUser.classId;
+        const students = await db.collection('users').find(studentQuery, { projection: { studentId: 1, name: 1, classId: 1 } }).toArray();
+        const studentIds = students.map(s => s.studentId);
+
+        const records = await db.collection('attendance').find(
+            { schoolId, studentId: { $in: studentIds }, date: { $gte: sinceStr } }
+        ).toArray();
+
+        const byStudent = {};
+        records.forEach(r => {
+            if (!byStudent[r.studentId]) byStudent[r.studentId] = { present: 0, total: 0 };
+            byStudent[r.studentId].total++;
+            if (r.status === 'Present') byStudent[r.studentId].present++;
+        });
+
+        const flagged = students.map(s => {
+            const rec = byStudent[s.studentId] || { present: 0, total: 0 };
+            const pct = rec.total > 0 ? Math.round((rec.present / rec.total) * 10000) / 100 : null;
+            return { studentId: s.studentId, name: s.name, classId: s.classId, presentCount: rec.present, totalCount: rec.total, attendancePct: pct };
+        }).filter(s => s.attendancePct !== null && s.attendancePct < threshold)
+          .sort((a, b) => a.attendancePct - b.attendancePct);
+
+        res.json({ days, threshold, flagged });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ flagged: [] });
+    }
+});
+
+const ATTENDANCE_DIGEST_COOLDOWN_HOURS = 24 * 6; // roughly weekly
+
+async function sendAttendanceDigest(schoolId, student) {
+    const now = new Date();
+    if (student.lastAttendanceDigestAt) {
+        const hoursSince = (now - new Date(student.lastAttendanceDigestAt)) / (1000 * 60 * 60);
+        if (hoursSince < ATTENDANCE_DIGEST_COOLDOWN_HOURS) return false;
+    }
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+    const sinceStr = since.toISOString().slice(0, 10);
+    const records = await db.collection('attendance').find({ schoolId, studentId: student.studentId, date: { $gte: sinceStr } }).toArray();
+    const total = records.length;
+    const present = records.filter(r => r.status === 'Present').length;
+    if (total === 0) return false; // nothing to report this week
+    const pct = Math.round((present / total) * 100);
+    notifyParentsOfStudent(schoolId, student.studentId, 'attendance',
+        `Weekly attendance for ${student.name}: ${present}/${total} days present (${pct}%).`);
+    await db.collection('users').updateOne({ studentId: student.studentId, schoolId }, { $set: { lastAttendanceDigestAt: now } });
+    return true;
+}
+
+app.post('/api/admin/attendance/digest/send-all', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const students = await db.collection('users').find(
+            { role: 'student', schoolId }, { projection: { studentId: 1, name: 1, lastAttendanceDigestAt: 1 } }
+        ).toArray();
+        let sentCount = 0, skippedCount = 0;
+        for (const s of students) {
+            const sent = await sendAttendanceDigest(schoolId, s);
+            if (sent) sentCount++; else skippedCount++;
+        }
+        await logAudit(req, 'attendance_digest_bulk_sent', { sentCount, skippedCount });
+        res.json({ success: true, sentCount, skippedCount });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.post('/api/admin/attendance/digest/send/:studentId', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const student = await db.collection('users').findOne(
+            { studentId: req.params.studentId, role: 'student', schoolId },
+            { projection: { studentId: 1, name: 1, lastAttendanceDigestAt: 1 } }
+        );
+        if (!student) return res.status(404).json({ success: false, message: "Student not found." });
+        const sent = await sendAttendanceDigest(schoolId, student);
+        await logAudit(req, 'attendance_digest_sent', { targetId: student.studentId, sent });
+        res.json({ success: true, sent, message: sent ? "Digest sent." : "A digest was already sent recently, or there's no attendance data this week." });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
     }
 });
 
