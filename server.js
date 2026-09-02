@@ -5,17 +5,57 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const ardosis = require('./ardosis-client');
 const PDFDocument = require('pdfkit');
+const http = require('http');
+const { Server: SocketIOServer } = require('socket.io');
+const cloudinary = require('cloudinary').v2;
 
-// Setup storage engine
-const storage = multer.diskStorage({
-    destination: './public/uploads/',
-    filename: function(req, file, cb) {
-        cb(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname));
+// =======================================================================
+// PERSISTENT FILE STORAGE (Phase 5)
+// Uploads (announcement images, homework attachments) are held in memory
+// by multer, then handed to persistUpload() below. If Cloudinary env vars
+// are set, files go there (survive redeploys). Otherwise this falls back
+// to the old local-disk behavior, which is fine for local dev but is lost
+// on every redeploy on Render's free tier — see roadmap Phase 5 notes.
+// =======================================================================
+const CLOUDINARY_ENABLED = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+if (CLOUDINARY_ENABLED) {
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET
+    });
+    console.log('☁️  Cloudinary persistent storage ENABLED — uploads survive redeploys.');
+} else {
+    console.log('⚠️  Cloudinary env vars not set — uploads fall back to local disk (lost on redeploy).');
+}
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+function uploadBufferToCloudinary(buffer, folder) {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream({ folder, resource_type: 'auto' }, (err, result) => {
+            if (err) return reject(err);
+            resolve(result.secure_url);
+        });
+        stream.end(buffer);
+    });
+}
+
+// Single entry point every upload route should call. Returns a URL that
+// works the same way regardless of which backend actually stored the file.
+async function persistUpload(file, folder) {
+    if (!file) return null;
+    if (CLOUDINARY_ENABLED) {
+        return await uploadBufferToCloudinary(file.buffer, folder);
     }
-});
-const upload = multer({ storage: storage });
+    fs.mkdirSync('./public/uploads/', { recursive: true });
+    const filename = `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
+    fs.writeFileSync(`./public/uploads/${filename}`, file.buffer);
+    return `/uploads/${filename}`;
+}
 
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
@@ -364,6 +404,44 @@ app.post('/api/owner/schools/create', requireAuth, requireRole('owner'), async (
         await db.collection('schools').insertOne({ schoolId, name: name.trim(), createdAt: new Date() });
         await logAudit(req, 'school_create', { schoolId, name: name.trim() });
         res.json({ success: true, message: `School created with code ${schoolId}`, schoolId });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+// One-step onboarding (Phase 4): create a school and its first admin in a
+// single call, instead of the two-step create-school-then-pick-from-dropdown
+// flow above. That flow still exists for adding more admins to a school
+// that already exists.
+app.post('/api/owner/onboard', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const { schoolName, adminId, adminName, adminPassword } = req.body;
+        if (!schoolName || !schoolName.trim()) {
+            return res.status(400).json({ success: false, message: "School name is required." });
+        }
+        if (!adminId || !adminName || !adminPassword) {
+            return res.status(400).json({ success: false, message: "Admin ID, name and password are required." });
+        }
+
+        const schoolId = await generateUniqueSchoolId(schoolName.trim());
+        await db.collection('schools').insertOne({ schoolId, name: schoolName.trim(), createdAt: new Date() });
+        await logAudit(req, 'school_create', { schoolId, name: schoolName.trim() });
+
+        if (!(await idBelongsToSchool(adminId, 'admin', schoolId))) {
+            return res.status(400).json({
+                success: false,
+                message: `School "${schoolName}" was created (code ${schoolId}), but admin ID "${adminId}" is already taken — add the admin separately below.`
+            });
+        }
+        const hashed = await bcrypt.hash(adminPassword, 10);
+        await db.collection('users').updateOne(
+            { studentId: adminId, role: 'admin' },
+            { $set: { name: adminName, role: 'admin', schoolId, password: hashed }, $setOnInsert: { createdAt: new Date() } },
+            { upsert: true }
+        );
+        await logAudit(req, 'admin_upsert', { targetId: adminId, schoolId });
+        res.json({ success: true, message: `School "${schoolName}" created (code ${schoolId}) with admin "${adminName}".`, schoolId });
     } catch (e) {
         console.error(e);
         res.status(500).json({ success: false, message: "Database error" });
@@ -1061,7 +1139,7 @@ app.post('/api/announcements', requireAuth, requireRole('admin'), upload.single(
             content: text || "",
             sender: sender || "ADIS Administration",
             type: type || "General",
-            imageUrl: req.file ? `/uploads/${req.file.filename}` : null,
+            imageUrl: await persistUpload(req.file, 'announcements'),
             date: new Date(),
             schoolId: req.currentUser.schoolId
         };
@@ -1252,6 +1330,19 @@ app.get('/api/admin/active-sessions', requireAuth, requireRole('admin'), async (
 app.get('/api/admin/audit-log', requireAuth, requireRole('admin'), async (req, res) => {
     try {
         const logs = await db.collection('auditLogs').find({ schoolId: req.currentUser.schoolId }).sort({ date: -1 }).limit(200).toArray();
+        res.json(logs);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// Owner sees the audit trail across every school (optionally filtered to
+// one via ?schoolId=), mirroring the admin version above.
+app.get('/api/owner/audit-log', requireAuth, requireRole('owner'), async (req, res) => {
+    try {
+        const query = {};
+        if (req.query.schoolId) query.schoolId = req.query.schoolId;
+        const logs = await db.collection('auditLogs').find(query).sort({ date: -1 }).limit(300).toArray();
         res.json(logs);
     } catch (e) {
         res.status(500).json([]);
@@ -1550,7 +1641,11 @@ app.post('/api/chat/threads/:id/messages', requireAuth, async (req, res) => {
         const recipientId = thread.participantIds.find(p => p !== req.currentUser.studentId);
         if (recipientId) {
             notifyUser(thread.schoolId, recipientId, 'chat', `New message from ${req.currentUser.name}.`);
+            emitChatMessage(recipientId, thread._id, doc);
         }
+        // Also push to the sender's own other open tabs/devices so a second
+        // window doesn't have to wait on the poll to show its own message.
+        emitChatMessage(req.currentUser.studentId, thread._id, doc);
         res.json({ success: true, messageDoc: doc });
     } catch (e) {
         console.error(e);
@@ -1687,7 +1782,7 @@ app.post('/api/homework', requireAuth, requireRole('admin', 'teacher'), upload.s
             title: title.trim(),
             description: description || '',
             dueDate: dueDate || null,
-            attachmentUrl: req.file ? `/uploads/${req.file.filename}` : null,
+            attachmentUrl: await persistUpload(req.file, 'homework'),
             createdAt: new Date()
         };
         const result = await db.collection('homework').insertOne(doc);
@@ -2383,6 +2478,120 @@ app.post('/api/admin/attendance/digest/send/:studentId', requireAuth, requireRol
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
+// =======================================================================
+// REAL CRON (Phase 5)
+// Render's free tier sleeps on idle, so an in-process scheduler (setInterval,
+// node-cron, etc.) can't be trusted to fire. These endpoints exist so an
+// external pinger — e.g. a free cron-job.org job — can hit them on a
+// schedule and get a REAL automatic sweep across every school, instead of
+// admins clicking "Remind All" / "Send to All" by hand. Protected by a
+// shared-secret key rather than requireAuth since there's no logged-in
+// admin session behind a scheduled HTTP call.
+//
+// Setup:
+//   1. Set CRON_SECRET in your environment (any long random string).
+//   2. Point cron-job.org (or similar) at, once a day:
+//        POST https://<your-app>/api/cron/fee-reminders?key=<CRON_SECRET>
+//        POST https://<your-app>/api/cron/attendance-digest?key=<CRON_SECRET>
+//      (the per-student 24h/6-day cooldowns already baked into
+//      sendFeeReminder/sendAttendanceDigest mean it's safe to ping daily —
+//      most students will just be skipped until they're actually due.)
+// =======================================================================
+const CRON_SECRET = process.env.CRON_SECRET || null;
+function requireCronSecret(req, res, next) {
+    if (!CRON_SECRET) {
+        return res.status(503).json({ success: false, message: "Cron endpoints are disabled — set CRON_SECRET in the environment to enable them." });
+    }
+    const key = req.query.key || req.header('x-cron-secret');
+    if (key !== CRON_SECRET) {
+        return res.status(401).json({ success: false, message: "Invalid or missing cron key." });
+    }
+    next();
+}
+
+app.post('/api/cron/fee-reminders', requireCronSecret, async (req, res) => {
+    try {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + 3);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        const students = await db.collection('users').find(
+            { role: 'student', feeDueDate: { $exists: true, $ne: null, $lte: cutoffStr } },
+            { projection: { studentId: 1, name: 1, schoolId: 1, totalFees: 1, feesPaid: 1, feeDueDate: 1, lastFeeReminderAt: 1 } }
+        ).toArray();
+        const overdue = students.filter(s => (s.totalFees || 0) - (s.feesPaid || 0) > 0);
+
+        let sentCount = 0, skippedCount = 0;
+        for (const s of overdue) {
+            const sent = await sendFeeReminder(s.schoolId, s);
+            if (sent) sentCount++; else skippedCount++;
+        }
+        console.log(`[cron] fee-reminders: ${sentCount} sent, ${skippedCount} skipped (across all schools)`);
+        res.json({ success: true, sentCount, skippedCount });
+    } catch (e) {
+        console.error('[cron] fee-reminders failed:', e);
+        res.status(500).json({ success: false, message: "Cron sweep failed." });
+    }
+});
+
+app.post('/api/cron/attendance-digest', requireCronSecret, async (req, res) => {
+    try {
+        const students = await db.collection('users').find(
+            { role: 'student' }, { projection: { studentId: 1, name: 1, schoolId: 1, lastAttendanceDigestAt: 1 } }
+        ).toArray();
+
+        let sentCount = 0, skippedCount = 0;
+        for (const s of students) {
+            const sent = await sendAttendanceDigest(s.schoolId, s);
+            if (sent) sentCount++; else skippedCount++;
+        }
+        console.log(`[cron] attendance-digest: ${sentCount} sent, ${skippedCount} skipped (across all schools)`);
+        res.json({ success: true, sentCount, skippedCount });
+    } catch (e) {
+        console.error('[cron] attendance-digest failed:', e);
+        res.status(500).json({ success: false, message: "Cron sweep failed." });
+    }
+});
+
+// =======================================================================
+// SOCKET.IO (Phase 5)
+// Swaps chat's transport from pure polling to push, while leaving the data
+// model (chatThreads/chatMessages) and the REST endpoints above completely
+// unchanged — the frontend keeps its polling as a fallback, but now gets
+// an instant nudge instead of waiting up to 8s. Every socket authenticates
+// the same way REST requests do (x-user-id/x-session-id, just sent once at
+// handshake instead of per-request) and joins a personal room named
+// `user:<studentId>`, so a message handler only needs to know the
+// recipient's id to reach every tab/device they have open.
+// =======================================================================
+const httpServer = http.createServer(app);
+const io = new SocketIOServer(httpServer, { cors: { origin: '*' } });
+
+io.use(async (socket, next) => {
+    try {
+        const { userId, sessionId } = socket.handshake.auth || {};
+        if (!userId || !sessionId) return next(new Error('Not logged in.'));
+        const user = await db.collection('users').findOne({ studentId: userId });
+        if (!user || user.currentSessionId !== sessionId) return next(new Error('Session expired or logged in elsewhere.'));
+        if (user.sessionExpiresAt && new Date(user.sessionExpiresAt) < new Date()) return next(new Error('Session expired.'));
+        socket.studentId = user.studentId;
+        next();
+    } catch (e) {
+        next(new Error('Auth check failed.'));
+    }
+});
+
+io.on('connection', (socket) => {
+    socket.join(`user:${socket.studentId}`);
+    socket.on('disconnect', () => {});
+});
+
+// Pushes a chat message to a specific user's room (all their open
+// tabs/devices at once). Safe no-op if they aren't connected — the
+// existing REST polling still picks it up on the next cycle.
+function emitChatMessage(recipientId, threadId, messageDoc) {
+    io.to(`user:${recipientId}`).emit('chat:new-message', { threadId: String(threadId), message: messageDoc });
+}
+
+httpServer.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT} (HTTP + Socket.io)`);
 });

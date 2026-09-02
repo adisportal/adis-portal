@@ -219,6 +219,32 @@
             if (chatBadgePollInterval) clearInterval(chatBadgePollInterval);
             chatBadgePollInterval = setInterval(loadChatBadge, 30000);
         }
+
+        connectChatSocket(user);
+    }
+
+    // ==========================================
+    // Socket.io (Phase 5): real-time push for chat, layered on top of the
+    // existing polling (which stays as a fallback — if the socket never
+    // connects, e.g. a network that blocks websockets, the app behaves
+    // exactly as it did before). Server pushes 'chat:new-message' to the
+    // room `user:<studentId>` — see emitChatMessage() in server.js.
+    // ==========================================
+    let chatSocket = null;
+    function connectChatSocket(user) {
+        if (typeof io === 'undefined') return; // socket.io client script failed to load — polling still works
+        if (chatSocket) { chatSocket.disconnect(); }
+        chatSocket = io({ auth: { userId: user.id, sessionId: user.sessionId } });
+
+        chatSocket.on('chat:new-message', ({ threadId, message }) => {
+            // If that thread is currently open, refresh it immediately.
+            if (currentThreadId && currentThreadId === threadId && typeof loadChatMessages === 'function') {
+                loadChatMessages();
+            }
+            // Always refresh the unread badge so it updates instantly
+            // instead of waiting for the next 30s poll.
+            if (typeof loadChatBadge === 'function') loadChatBadge();
+        });
     }
 
     function logout() {
@@ -229,6 +255,7 @@
         if (notifPollInterval) clearInterval(notifPollInterval);
         if (chatBadgePollInterval) clearInterval(chatBadgePollInterval);
         if (chatMessagePoll) clearInterval(chatMessagePoll);
+        if (chatSocket) { chatSocket.disconnect(); chatSocket = null; }
         location.reload();
     }
 
@@ -294,6 +321,7 @@
         if (id === 'homework') loadHomeworkSection();
         if (id === 'report-cards') loadReportCardsSection();
         if (id === 'attendance') loadAttendanceAnalytics();
+        if (id === 'audit-log') loadAuditLog();
 
         if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
@@ -969,6 +997,121 @@ async function toggleMaintenanceMode() {
         loadOwnerAnalytics();
         loadSchools();
         loadAdmins();
+    }
+
+    // One-step onboarding: creates a school and its first admin together
+    // (Phase 4). Falls back gracefully if the admin ID collides.
+    async function quickOnboard(btn) {
+        const data = {
+            schoolName: document.getElementById('onboard-school-name').value.trim(),
+            adminName: document.getElementById('onboard-admin-name').value.trim(),
+            adminId: document.getElementById('onboard-admin-id').value.trim(),
+            adminPassword: document.getElementById('onboard-admin-pass').value
+        };
+        if (!data.schoolName) return alert("Enter a school name");
+        if (!data.adminId || !data.adminName || !data.adminPassword) return alert("Admin name, ID and password are all required");
+
+        btn.disabled = true;
+        btn.innerText = "Creating...";
+        try {
+            const res = await authFetch('/api/owner/onboard', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            alert(result.message);
+            if (result.success) {
+                ['onboard-school-name', 'onboard-admin-name', 'onboard-admin-id', 'onboard-admin-pass'].forEach(id => document.getElementById(id).value = '');
+                loadSchools();
+                loadAdmins();
+                loadOwnerStats();
+            }
+        } catch (e) {
+            alert("API Connection Error. Please try again.");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Create School + Admin";
+        }
+    }
+
+    // ==========================================
+    // AUDIT LOG (Phase 4): admin sees their own school, owner sees every
+    // school. Backend already returns everything needed (actor, action,
+    // details, date) — filtering here is client-side over the fetched
+    // page since 200-300 rows is small enough to not need server paging.
+    // ==========================================
+    let auditLogCache = [];
+    async function loadAuditLog() {
+        const list = document.getElementById('audit-log-list');
+        if (!list) return;
+        list.innerHTML = "Loading audit log...";
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const endpoint = user.role === 'owner' ? '/api/owner/audit-log' : '/api/admin/audit-log';
+        try {
+            const res = await authFetch(endpoint);
+            auditLogCache = await res.json();
+
+            const actionSelect = document.getElementById('audit-filter-action');
+            if (actionSelect) {
+                const actions = [...new Set(auditLogCache.map(l => l.action))].sort();
+                const current = actionSelect.value;
+                actionSelect.innerHTML = '<option value="">All actions</option>' +
+                    actions.map(a => `<option value="${a}">${a.replace(/_/g, ' ')}</option>`).join('');
+                if (current) actionSelect.value = current;
+            }
+            renderAuditLog();
+        } catch (e) {
+            list.innerHTML = '<div class="card p-2 text-center text-danger">Error loading audit log.</div>';
+        }
+    }
+
+    function renderAuditLog() {
+        const list = document.getElementById('audit-log-list');
+        if (!list) return;
+
+        const roleFilter = (document.getElementById('audit-filter-role') || {}).value || '';
+        const actionFilter = (document.getElementById('audit-filter-action') || {}).value || '';
+        const search = ((document.getElementById('audit-filter-search') || {}).value || '').toLowerCase().trim();
+
+        let rows = auditLogCache;
+        if (roleFilter) rows = rows.filter(l => l.actorRole === roleFilter);
+        if (actionFilter) rows = rows.filter(l => l.action === actionFilter);
+        if (search) {
+            rows = rows.filter(l =>
+                (l.actorId || '').toLowerCase().includes(search) ||
+                (l.action || '').toLowerCase().includes(search) ||
+                JSON.stringify(l.details || {}).toLowerCase().includes(search) ||
+                (l.schoolId || '').toLowerCase().includes(search)
+            );
+        }
+
+        if (rows.length === 0) {
+            list.innerHTML = '<div class="card p-2 text-center text-muted">No matching entries.</div>';
+            return;
+        }
+
+        list.innerHTML = rows.slice(0, 200).map(l => {
+            const when = new Date(l.date);
+            const detailsStr = l.details && Object.keys(l.details).length
+                ? Object.entries(l.details).map(([k, v]) => `${k}: ${v}`).join(' · ')
+                : '';
+            return `
+                <div class="card p-2 mb-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong class="text-dark">${l.actorId || 'unknown'}</strong>
+                            <span class="badge bg-secondary ms-1" style="font-size:0.65rem;">${l.actorRole || '—'}</span>
+                            ${l.schoolId ? `<span class="text-muted small ms-1">(${l.schoolId})</span>` : ''}
+                            <div class="small">${(l.action || '').replace(/_/g, ' ')}</div>
+                            ${detailsStr ? `<div class="text-muted" style="font-size:0.72rem;">${detailsStr}</div>` : ''}
+                        </div>
+                        <div class="text-muted small text-end" style="white-space:nowrap;">
+                            ${when.toLocaleDateString()}<br>${when.toLocaleTimeString()}
+                        </div>
+                    </div>
+                </div>`;
+        }).join('') + (rows.length > 200 ? `<div class="text-muted small text-center">Showing first 200 of ${rows.length} matching entries.</div>` : '');
     }
 
     async function loadOwnerAnalytics() {

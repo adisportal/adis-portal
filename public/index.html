@@ -156,6 +156,10 @@
                     <i class="fas fa-file-invoice me-3"></i> Report Cards
                 </div>
 
+                <div class="nav-link" data-role="admin,owner" style="display:none;" onclick="showSection('audit-log', 'Audit Log')">
+                    <i class="fas fa-scroll me-3"></i> Audit Log
+                </div>
+
                 
                 <div class="nav-link text-danger" data-role="owner" style="display:none;" onclick="toggleMaintenanceMode()">
                     <i class="fas fa-power-off me-3"></i> Toggle Maintenance (All Schools)
@@ -315,8 +319,19 @@
 
                 <div id="owner-analytics" class="mb-4"></div>
 
+                <div class="card p-3 mb-4" style="border: 1px solid var(--amber);">
+                    <h6>⚡ Quick Onboard <span class="text-muted small fw-normal">(school + first admin, one step)</span></h6>
+                    <div class="row g-2">
+                        <div class="col-12"><input type="text" id="onboard-school-name" class="form-control" placeholder="School Name"></div>
+                        <div class="col-6"><input type="text" id="onboard-admin-name" class="form-control" placeholder="Admin Full Name"></div>
+                        <div class="col-6"><input type="text" id="onboard-admin-id" class="form-control" placeholder="Admin ID (login)"></div>
+                        <div class="col-12"><input type="password" id="onboard-admin-pass" class="form-control" placeholder="Admin Password"></div>
+                    </div>
+                    <button class="btn btn-warning mt-2 w-100" onclick="quickOnboard(this)">Create School + Admin</button>
+                </div>
+
                 <div class="card p-3 mb-4">
-                    <h6>Create School</h6>
+                    <h6>Create School <span class="text-muted small fw-normal">(only — add admins below)</span></h6>
                     <div class="row g-2">
                         <div class="col-8"><input type="text" id="school-name" class="form-control" placeholder="School Name"></div>
                         <div class="col-4"><button class="btn btn-success w-100" onclick="createSchool()">Add</button></div>
@@ -614,6 +629,37 @@
                     <div id="oversight-messages" class="chat-messages-box"></div>
                 </div>
             </div>
+
+            <div id="audit-log" class="section-panel">
+                <h3 class="fw-bold mb-2">📜 Audit Log</h3>
+                <p class="text-muted small mb-3">A record of sensitive admin/teacher actions — who did what, and when.</p>
+
+                <div class="card p-3 mb-3">
+                    <div class="row g-2">
+                        <div class="col-6 col-md-3">
+                            <select id="audit-filter-role" class="form-control form-control-sm" onchange="renderAuditLog()">
+                                <option value="">All roles</option>
+                                <option value="owner">Owner</option>
+                                <option value="admin">Admin</option>
+                                <option value="teacher">Teacher</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <select id="audit-filter-action" class="form-control form-control-sm" onchange="renderAuditLog()">
+                                <option value="">All actions</option>
+                            </select>
+                        </div>
+                        <div class="col-8 col-md-4">
+                            <input type="text" id="audit-filter-search" class="form-control form-control-sm" placeholder="Search actor / details..." oninput="renderAuditLog()">
+                        </div>
+                        <div class="col-4 col-md-2">
+                            <button class="btn btn-sm btn-outline-secondary w-100" onclick="loadAuditLog()"><i class="fas fa-rotate"></i> Refresh</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="audit-log-list">Loading audit log...</div>
+            </div>
         </div> <div class="bottom-nav">
             <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">
                 <i class="fas fa-home"></i>Home
@@ -645,6 +691,7 @@
         </div>
     </div>
 
+<script src="/socket.io/socket.io.js"></script>
 <script src="/script.js"></script>
 </body>
 </html>
