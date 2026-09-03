@@ -275,10 +275,16 @@
 
     function loadDashboardBasedOnRole(role) {
         if(role === 'owner') { showSection('owner-panel', 'Owner Panel'); loadOwnerDashboard(); }
-        else if(role === 'admin') showSection('admin-teachers', 'Admin Panel');
-        else if(role === 'teacher') showSection('staff-students', 'Manage Students');
-        else if(role === 'parent') showSection('parent-panel', 'My Children');
-        else showSection('announcements', 'Home');
+        else showSection('home-dashboard', 'Home');
+    }
+
+    // Home nav item goes to the Owner Panel for owners (their dashboard IS
+    // already analytics-first) and the new role-aware dashboard for
+    // everyone else.
+    function goHome() {
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        if (user.role === 'owner') showSection('owner-panel', 'Owner Panel');
+        else showSection('home-dashboard', 'Home');
     }
 
     function showSection(id, title) {
@@ -322,6 +328,7 @@
         if (id === 'report-cards') loadReportCardsSection();
         if (id === 'attendance') loadAttendanceAnalytics();
         if (id === 'audit-log') loadAuditLog();
+        if (id === 'home-dashboard') loadHomeDashboard();
 
         if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
@@ -870,6 +877,41 @@ async function toggleMaintenanceMode() {
         loadClassAttendance();
     }
 
+    // One-tap attendance (Phase 6B): bulk-set the whole roster to one
+    // status in a single click, instead of tapping Present on every
+    // student individually. Teachers then only tap the exceptions.
+    async function bulkMarkAttendance(status) {
+        const classId = document.getElementById('att-class-select').value;
+        const date = document.getElementById('att-date-select').value;
+        if (!classId || !date) return alert("Select a class and date first.");
+        if (!confirm(`Mark every student in ${classId} as ${status} for ${date}? You can still tap individual students to change exceptions afterward.`)) return;
+
+        try {
+            const studentsRes = await authFetch(`/api/students/class/${classId}`);
+            const students = await studentsRes.json();
+            await Promise.all(students.map(s => authFetch('/api/attendance/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentId: s.studentId, date, status, classId })
+            })));
+            loadClassAttendance();
+        } catch (e) {
+            alert("Couldn't mark attendance for the whole class. Please try again.");
+        }
+    }
+    function markAllPresent() { bulkMarkAttendance('Present'); }
+    function markAllAbsent() { bulkMarkAttendance('Absent'); }
+
+    // Jumps straight into the attendance screen with a class pre-selected —
+    // used by the "Take Attendance" CTA on the Home dashboard.
+    function goToTakeAttendance(classId) {
+        showSection('attendance', 'Attendance');
+        setTimeout(() => {
+            const sel = document.getElementById('att-class-select');
+            if (sel && classId) { sel.value = classId; loadClassAttendance(); }
+        }, 150);
+    }
+
     async function loadStudentAttendanceView(studentId) {
         const res = await authFetch(`/api/student/attendance/${studentId}`);
         const records = await res.json();
@@ -1112,6 +1154,210 @@ async function toggleMaintenanceMode() {
                     </div>
                 </div>`;
         }).join('') + (rows.length > 200 ? `<div class="text-muted small text-center">Showing first 200 of ${rows.length} matching entries.</div>` : '');
+    }
+
+    // ==========================================
+    // HOME DASHBOARD (Phase 6A): role-aware landing page, replacing the
+    // generic Announcements page. Pulls from GET /api/dashboard/summary.
+    // ==========================================
+    function timeGreeting() {
+        const h = new Date().getHours();
+        if (h < 12) return 'Good morning';
+        if (h < 17) return 'Good afternoon';
+        return 'Good evening';
+    }
+
+    function fmtDate(d) {
+        if (!d) return '';
+        const dt = (d instanceof Date) ? d : new Date(d);
+        if (isNaN(dt)) return d;
+        return dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    async function loadHomeDashboard() {
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        document.getElementById('dashboard-greeting').innerHTML = `
+            <h4 class="fw-bold mb-0">${timeGreeting()}, ${(user.name || '').split(' ')[0]} 👋</h4>
+            <p class="text-muted mb-0">${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+        `;
+        const content = document.getElementById('dashboard-content');
+        content.innerHTML = `<div class="text-center p-4"><div class="loader" style="margin:auto;border-top-color:var(--amber);"></div></div>`;
+
+        try {
+            const res = await authFetch('/api/dashboard/summary');
+            const data = await res.json();
+            if (data.role === 'teacher') renderTeacherDashboard(data);
+            else if (data.role === 'student') renderStudentDashboard(data);
+            else if (data.role === 'parent') renderParentDashboard(data);
+            else if (data.role === 'admin') renderAdminDashboard(data);
+            else content.innerHTML = `<div class="card p-3 text-muted">Nothing to show here yet.</div>`;
+        } catch (e) {
+            content.innerHTML = `<div class="card p-3 text-center text-danger">Couldn't load your dashboard. <button class="btn btn-sm btn-outline-secondary ms-2" onclick="loadHomeDashboard()">Retry</button></div>`;
+        }
+    }
+
+    function renderTeacherDashboard(data) {
+        const content = document.getElementById('dashboard-content');
+        const next = data.nextPeriod;
+
+        const attRows = data.attendanceStatus.length === 0
+            ? `<div class="text-muted small">No classes scheduled today.</div>`
+            : data.attendanceStatus.map(a => `
+                <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                    <div>
+                        <strong>${a.classId}</strong>
+                        <span class="small text-muted ms-2">${a.marked}/${a.roster} marked</span>
+                    </div>
+                    ${a.taken
+                        ? `<span class="badge bg-success">✓ Taken</span>`
+                        : `<button class="btn btn-sm btn-warning" onclick="goToTakeAttendance('${a.classId}')">Take Attendance</button>`}
+                </div>`).join('');
+
+        const hwRows = data.homeworkDueSoon.length === 0
+            ? `<div class="text-muted small">Nothing due in the next few days.</div>`
+            : data.homeworkDueSoon.map(h => `
+                <div class="border-bottom py-2">
+                    <div class="d-flex justify-content-between">
+                        <strong>${h.title}</strong>
+                        <span class="text-muted small">${fmtDate(h.dueDate)}</span>
+                    </div>
+                    <div class="small text-muted">${h.classId} · ${h.doneCount}/${h.totalCount} submitted</div>
+                </div>`).join('');
+
+        const firstUnmarked = data.attendanceStatus.find(a => !a.taken);
+
+        content.innerHTML = `
+            ${firstUnmarked ? `
+                <button class="btn btn-warning btn-lg w-100 mb-3 fw-bold" onclick="goToTakeAttendance('${firstUnmarked.classId}')">
+                    <i class="fas fa-clipboard-check me-2"></i>Take Attendance — ${firstUnmarked.classId}
+                </button>` : ''}
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <div class="card p-3 h-100">
+                        <h6 class="fw-bold">🕐 Today's Classes</h6>
+                        ${next ? `<p class="mb-2 small">Next: <strong>${next.subject}</strong> · ${next.classId} · ${next.startTime}</p>` : `<p class="text-muted small">No more periods today.</p>`}
+                        ${attRows}
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="card p-3 h-100 mb-3">
+                        <h6 class="fw-bold">📚 Homework Due Soon</h6>
+                        ${hwRows}
+                    </div>
+                    <div class="card p-3 d-flex flex-row justify-content-between align-items-center">
+                        <span>💬 Unread Messages</span>
+                        <span class="badge bg-primary">${data.unreadMessages}</span>
+                        ${data.unreadMessages > 0 ? `<button class="btn btn-sm btn-outline-primary" onclick="showSection('chat-hub','Chats')">Open</button>` : ''}
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function renderStudentDashboard(data) {
+        const content = document.getElementById('dashboard-content');
+        const next = data.nextPeriod;
+
+        const hwRows = data.homeworkPending.length === 0
+            ? `<div class="text-muted small">You're all caught up 🎉</div>`
+            : data.homeworkPending.map(h => `
+                <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                    <div>
+                        <strong>${h.title}</strong>
+                        <div class="small ${h.overdue ? 'text-danger' : 'text-muted'}">${h.classId} · ${h.overdue ? 'Overdue' : 'Due'} ${fmtDate(h.dueDate)}</div>
+                    </div>
+                </div>`).join('');
+
+        content.innerHTML = `
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <div class="card p-3 h-100">
+                        <h6 class="fw-bold">📅 Next Class</h6>
+                        ${next ? `<p class="mb-0">${next.subject}<br><span class="text-muted small">${next.startTime} – ${next.endTime}</span></p>` : `<p class="text-muted small">No more classes today.</p>`}
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="card p-3 h-100 d-flex flex-row justify-content-between align-items-center">
+                        <span>💬 Unread Messages</span>
+                        <span class="badge bg-primary">${data.unreadMessages}</span>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="card p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold mb-0">📚 Homework To Do</h6>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="showSection('homework','Homework')">View All</button>
+                        </div>
+                        ${hwRows}
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function renderParentDashboard(data) {
+        const content = document.getElementById('dashboard-content');
+        if (data.children.length === 0) {
+            content.innerHTML = `<div class="card p-3 text-muted">No linked children found on this account.</div>`;
+            return;
+        }
+        content.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span></span>
+                <span class="badge bg-primary">💬 ${data.unreadMessages} unread</span>
+            </div>
+            <div class="row g-3">
+            ${data.children.map(c => `
+                <div class="col-12 col-md-6">
+                    <div class="card p-3 h-100">
+                        <h6 class="fw-bold">${c.name} <span class="text-muted small fw-normal">${c.classId}</span></h6>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between small mb-1"><span>Attendance</span><span>${c.attendancePct === null ? '—' : c.attendancePct + '%'}</span></div>
+                            <div class="progress" style="height:8px;"><div class="progress-bar ${c.attendancePct !== null && c.attendancePct < 75 ? 'bg-danger' : 'bg-success'}" style="width:${c.attendancePct || 0}%;"></div></div>
+                        </div>
+                        <div class="d-flex justify-content-between small mb-1"><span>Homework</span><span>${c.homeworkDone}/${c.homeworkTotal} done</span></div>
+                        <div class="d-flex justify-content-between small mb-2"><span>Fees Outstanding</span><span class="${c.feesOutstanding > 0 ? 'text-danger fw-bold' : ''}">₹${c.feesOutstanding.toLocaleString()}</span></div>
+                        ${c.attendancePct !== null && c.attendancePct < 75 ? `<div class="alert alert-warning py-1 px-2 small mb-0">⚠️ Attendance below the school's 75% recommended level.</div>` : ''}
+                    </div>
+                </div>`).join('')}
+            </div>`;
+    }
+
+    function renderAdminDashboard(data) {
+        const content = document.getElementById('dashboard-content');
+        content.innerHTML = `
+            <div class="card p-3 mb-3">
+                <h6 class="fw-bold mb-3">⚠️ Needs Attention</h6>
+                <div class="row g-2 text-center">
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 border rounded ${data.classesNoAttendance > 0 ? 'border-danger' : ''}">
+                            <div class="h4 mb-0 ${data.classesNoAttendance > 0 ? 'text-danger' : 'text-success'}">${data.classesNoAttendance}</div>
+                            <div class="small text-muted">of ${data.classesTotal} classes missing attendance</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 border rounded ${data.overdueHomework > 0 ? 'border-warning' : ''}">
+                            <div class="h4 mb-0">${data.overdueHomework}</div>
+                            <div class="small text-muted">overdue homework posts</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 border rounded ${data.feesOutstanding > 0 ? 'border-warning' : ''}">
+                            <div class="h4 mb-0">₹${data.feesOutstanding.toLocaleString()}</div>
+                            <div class="small text-muted">fees outstanding</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-2 border rounded ${data.unresolvedFeedback > 0 ? 'border-warning' : ''}">
+                            <div class="h4 mb-0">${data.unresolvedFeedback}</div>
+                            <div class="small text-muted">unresolved conversations</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-outline-primary" onclick="showSection('fees','Fees')">Review Fees</button>
+                <button class="btn btn-sm btn-outline-primary" onclick="showSection('feedback-inbox','Feedback')">Open Feedback</button>
+                <button class="btn btn-sm btn-outline-primary" onclick="showSection('audit-log','Audit Log')">Audit Log</button>
+            </div>`;
     }
 
     async function loadOwnerAnalytics() {

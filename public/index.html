@@ -111,8 +111,11 @@
             </div>
             
             <div id="nav-menu">
-                <div class="nav-link" onclick="showSection('announcements', 'Home')">
-                    <i class="fas fa-home me-3"></i> Home
+                <div class="nav-link" data-role="admin,teacher,student,parent" style="display:none;" onclick="goHome()">
+                    <i class="fas fa-house me-3"></i> Home
+                </div>
+                <div class="nav-link" onclick="showSection('announcements', 'Announcements')">
+                    <i class="fas fa-bullhorn me-3"></i> Announcements
                 </div>                
                 
                 <div class="nav-link" data-role="owner" style="display:none;" onclick="showSection('owner-panel', 'Owner Panel')">
@@ -181,7 +184,17 @@
             </div>
         </div>
         <div class="content-area" id="main-content" onclick="hideSidebarOnCenterClick()">
-            <div id="announcements" class="section-panel active-panel">
+            <div id="home-dashboard" class="section-panel active-panel">
+                <div id="dashboard-greeting" class="mb-3"></div>
+                <div id="dashboard-content">
+                    <div class="text-center p-5">
+                        <div class="loader" style="margin: auto; border-top-color: var(--amber);"></div>
+                        <p class="mt-2 text-muted">Loading your dashboard...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="announcements" class="section-panel">
                 <div id="announcement-poster" class="card p-3 mb-4" style="display:none;">
                     <h6 class="fw-bold mb-3">📢 Post New Announcement</h6>
                     <textarea id="ann-text" class="form-control mb-3" rows="3" placeholder="Write your message..."></textarea>
@@ -415,6 +428,10 @@
                             </select>
                         </div>
                         <div class="col-6"><input type="date" id="att-date-select" class="form-control" onchange="loadClassAttendance()"></div>
+                    </div>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn btn-sm btn-success flex-fill" onclick="markAllPresent()"><i class="fas fa-check-double me-1"></i>Mark All Present</button>
+                        <button class="btn btn-sm btn-outline-danger flex-fill" onclick="markAllAbsent()">Mark All Absent</button>
                     </div>
                     <div id="class-student-list" class="mt-3"></div>
                 </div>
@@ -661,7 +678,7 @@
                 <div id="audit-log-list">Loading audit log...</div>
             </div>
         </div> <div class="bottom-nav">
-            <div class="nav-item active" id="nav-home" onclick="showSection('announcements', 'Home')">
+            <div class="nav-item active" id="nav-home" onclick="goHome()">
                 <i class="fas fa-home"></i>Home
             </div>
             <div class="nav-item" id="nav-manage" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage')">

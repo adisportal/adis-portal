@@ -1068,6 +1068,153 @@ app.get('/api/timetable/mine', requireAuth, async (req, res) => {
 });
 
 // =======================================================================
+// HOME DASHBOARD (Phase 6A)
+// One role-aware summary endpoint powering the new "Home" dashboard that
+// replaces the old generic Announcements landing page. Built entirely on
+// existing collections (attendance, homework, homeworkStatus,
+// timetableSlots, feedback, chatThreads, users) — no new schema, same
+// pattern used for the owner analytics cards back in Phase 2C.
+// =======================================================================
+async function countUnreadThreads(userId) {
+    const threads = await db.collection('chatThreads').find(
+        { participantIds: userId },
+        { projection: { lastMessageAt: 1, lastMessageSender: 1, lastReadAt: 1 } }
+    ).toArray();
+    return threads.filter(t => {
+        const lastRead = t.lastReadAt && t.lastReadAt[userId] ? new Date(t.lastReadAt[userId]) : null;
+        return !!t.lastMessageAt && t.lastMessageSender !== userId && (!lastRead || new Date(t.lastMessageAt) > lastRead);
+    }).length;
+}
+
+function todayDayCode() {
+    // JS getDay(): 0=Sun..6=Sat. TIMETABLE_DAYS only covers Mon-Sat (no school Sunday).
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()];
+}
+
+app.get('/api/dashboard/summary', requireAuth, async (req, res) => {
+    try {
+        const user = req.currentUser;
+        const schoolId = user.schoolId;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayDay = todayDayCode();
+        const nowHM = new Date().toTimeString().slice(0, 5);
+
+        if (user.role === 'teacher') {
+            const slotsToday = (await db.collection('timetableSlots').find({ schoolId, teacherId: user.studentId, day: todayDay }).toArray())
+                .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+            const nextPeriod = slotsToday.find(s => (s.startTime || '') >= nowHM) || null;
+
+            const classIdsToday = [...new Set(slotsToday.map(s => s.classId))];
+            const attendanceStatus = [];
+            for (const classId of classIdsToday) {
+                const marked = await db.collection('attendance').countDocuments({ schoolId, classId, date: todayStr });
+                const roster = await db.collection('users').countDocuments({ schoolId, role: 'student', classId });
+                attendanceStatus.push({ classId, taken: marked > 0, marked, roster });
+            }
+
+            const homeworkDocs = await db.collection('homework').find({ schoolId, teacherId: user.studentId }).sort({ createdAt: -1 }).limit(20).toArray();
+            const now = new Date();
+            const dueSoon = homeworkDocs.filter(h => h.dueDate && new Date(h.dueDate) >= now && (new Date(h.dueDate) - now) < 4 * 24 * 3600 * 1000);
+            const homeworkDueSoon = [];
+            for (const h of dueSoon.slice(0, 5)) {
+                const roster = await db.collection('users').countDocuments({ schoolId, role: 'student', classId: h.classId });
+                const done = await db.collection('homeworkStatus').countDocuments({ homeworkId: String(h._id), done: true });
+                homeworkDueSoon.push({ title: h.title, classId: h.classId, dueDate: h.dueDate, doneCount: done, totalCount: roster });
+            }
+
+            return res.json({
+                role: 'teacher',
+                nextPeriod: nextPeriod ? { subject: nextPeriod.subject, classId: nextPeriod.classId, startTime: nextPeriod.startTime, endTime: nextPeriod.endTime } : null,
+                attendanceStatus,
+                homeworkDueSoon,
+                unreadMessages: await countUnreadThreads(user.studentId)
+            });
+        }
+
+        if (user.role === 'student') {
+            const slotsToday = (await db.collection('timetableSlots').find({ schoolId, classId: user.classId, day: todayDay }).toArray())
+                .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+            const nextPeriod = slotsToday.find(s => (s.startTime || '') >= nowHM) || null;
+
+            const homeworkDocs = await db.collection('homework').find({ schoolId, classId: user.classId }).sort({ createdAt: -1 }).limit(20).toArray();
+            const statuses = await db.collection('homeworkStatus').find({ studentId: user.studentId, homeworkId: { $in: homeworkDocs.map(h => String(h._id)) } }).toArray();
+            const doneIds = new Set(statuses.filter(s => s.done).map(s => s.homeworkId));
+            const now = new Date();
+            const homeworkPending = homeworkDocs
+                .filter(h => !doneIds.has(String(h._id)))
+                .map(h => ({ title: h.title, classId: h.classId, dueDate: h.dueDate, overdue: !!h.dueDate && new Date(h.dueDate) < now }))
+                .slice(0, 6);
+
+            return res.json({
+                role: 'student',
+                nextPeriod: nextPeriod ? { subject: nextPeriod.subject, startTime: nextPeriod.startTime, endTime: nextPeriod.endTime } : null,
+                homeworkPending,
+                unreadMessages: await countUnreadThreads(user.studentId)
+            });
+        }
+
+        if (user.role === 'parent') {
+            const linkedIds = user.linkedStudentIds || [];
+            const children = await db.collection('users').find({ studentId: { $in: linkedIds }, role: 'student', schoolId }, { projection: PUBLIC_PROJECTION }).toArray();
+            const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+            const children_summary = [];
+            for (const child of children) {
+                const records = await db.collection('attendance').find({ studentId: child.studentId, schoolId, date: { $gte: cutoffStr } }).toArray();
+                const present = records.filter(r => r.status === 'Present').length;
+                const attendancePct = records.length ? Math.round((present / records.length) * 100) : null;
+
+                const homeworkDocs = await db.collection('homework').find({ schoolId, classId: child.classId }).sort({ createdAt: -1 }).limit(15).toArray();
+                const statuses = await db.collection('homeworkStatus').find({ studentId: child.studentId, homeworkId: { $in: homeworkDocs.map(h => String(h._id)) } }).toArray();
+                const doneCount = statuses.filter(s => s.done).length;
+
+                children_summary.push({
+                    studentId: child.studentId,
+                    name: child.name,
+                    classId: child.classId,
+                    attendancePct,
+                    homeworkDone: doneCount,
+                    homeworkTotal: homeworkDocs.length,
+                    feesOutstanding: Math.max((child.totalFees || 0) - (child.feesPaid || 0), 0)
+                });
+            }
+            return res.json({ role: 'parent', children: children_summary, unreadMessages: await countUnreadThreads(user.studentId) });
+        }
+
+        if (user.role === 'admin') {
+            const classes = await db.collection('classes').find({ schoolId }).toArray();
+            let classesNoAttendance = 0;
+            for (const c of classes) {
+                const marked = await db.collection('attendance').countDocuments({ schoolId, classId: c.className, date: todayStr });
+                if (marked === 0) classesNoAttendance++;
+            }
+
+            const overdueHomework = await db.collection('homework').countDocuments({ schoolId, dueDate: { $ne: null, $lt: todayStr } });
+
+            const students = await db.collection('users').find({ schoolId, role: 'student' }, { projection: { totalFees: 1, feesPaid: 1 } }).toArray();
+            const feesOutstanding = students.reduce((sum, s) => sum + Math.max((s.totalFees || 0) - (s.feesPaid || 0), 0), 0);
+
+            const unresolvedFeedback = await db.collection('feedback').countDocuments({ schoolId, status: { $ne: 'resolved' } });
+
+            return res.json({
+                role: 'admin',
+                classesTotal: classes.length,
+                classesNoAttendance,
+                overdueHomework,
+                feesOutstanding,
+                unresolvedFeedback
+            });
+        }
+
+        res.json({ role: user.role });
+    } catch (e) {
+        console.error('[dashboard/summary]', e);
+        res.status(500).json({ error: "Database error" });
+    }
+});
+
+// =======================================================================
 // ATTENDANCE
 // =======================================================================
 app.get('/api/attendance/:classId/:date', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
