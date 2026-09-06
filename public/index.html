@@ -66,6 +66,7 @@
                 <input type="text" id="global-search" class="form-control form-control-sm me-2" 
                placeholder="Search..." onkeyup="executeSearch()" 
                style="display:none; max-width:150px; border-radius: 20px;">
+                <div id="global-search-results" style="display:none; position:fixed; top:56px; right:8px; width:320px; max-height:420px; overflow-y:auto; background:white; border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,0.15); z-index:15000;"></div>
                 <div class="position-relative me-3" style="cursor:pointer;" onclick="toggleNotificationPanel()">
                     <i class="fas fa-bell fs-5 text-muted"></i>
                     <span id="notif-badge" class="badge rounded-pill bg-danger" style="display:none; position:absolute; top:-6px; right:-8px; font-size:0.6rem;">0</span>
@@ -75,10 +76,17 @@
         </div>
 
 
-        <div id="notif-panel" style="display:none; position:fixed; top:56px; right:8px; width:300px; max-height:400px; overflow-y:auto; background:white; border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,0.15); z-index:15000;">
+        <div id="notif-panel" style="display:none; position:fixed; top:56px; right:8px; width:300px; max-height:440px; overflow-y:auto; background:white; border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,0.15); z-index:15000;">
             <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
                 <strong class="small">Notifications</strong>
                 <button class="btn btn-sm btn-link p-0" onclick="markAllNotificationsRead()">Mark all read</button>
+            </div>
+            <div class="d-flex gap-1 p-2 border-bottom" style="overflow-x:auto;">
+                <button class="btn btn-sm notif-cat-btn active" data-cat="all" onclick="setNotifCategory('all')">All</button>
+                <button class="btn btn-sm notif-cat-btn" data-cat="academic" onclick="setNotifCategory('academic')">Academic</button>
+                <button class="btn btn-sm notif-cat-btn" data-cat="fees" onclick="setNotifCategory('fees')">Fees</button>
+                <button class="btn btn-sm notif-cat-btn" data-cat="attendance" onclick="setNotifCategory('attendance')">Attendance</button>
+                <button class="btn btn-sm notif-cat-btn" data-cat="messages" onclick="setNotifCategory('messages')">Messages</button>
             </div>
             <div id="notif-list" class="p-2"><p class="text-muted small text-center m-0">No notifications yet.</p></div>
         </div>
@@ -161,6 +169,10 @@
 
                 <div class="nav-link" data-role="admin,owner" style="display:none;" onclick="showSection('audit-log', 'Audit Log')">
                     <i class="fas fa-scroll me-3"></i> Audit Log
+                </div>
+
+                <div class="nav-link" data-role="admin" style="display:none;" onclick="showSection('automations', 'Automations')">
+                    <i class="fas fa-robot me-3"></i> Automations
                 </div>
 
                 
@@ -379,6 +391,17 @@
 
             <div id="student-directory" class="section-panel">
                 <h3 class="fw-bold mb-4">📖 Student Directory</h3>
+                <div id="bulk-action-bar" class="card p-2 mb-3 d-none">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span class="small fw-bold"><span id="bulk-selected-count">0</span> selected</span>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-sm btn-outline-primary" onclick="bulkChangeClassPrompt()">Change Class</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="bulkNotifyParentsPrompt()">Notify Parents</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="bulkExportCsv()">Export CSV</button>
+                            <button class="btn btn-sm btn-link text-muted" onclick="clearBulkSelection()">Clear</button>
+                        </div>
+                    </div>
+                </div>
                 <div id="student-directory-container">Loading student data...</div>
             </div>
 
@@ -421,6 +444,10 @@
             <div id="attendance" class="section-panel">
                 <h3 class="fw-bold mb-4">📊 Attendance</h3>
                 <div id="teacher-attendance-controls" class="card p-3 mb-4" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span></span>
+                        <span id="offline-sync-badge"></span>
+                    </div>
                     <div class="row g-2">
                         <div class="col-6">
                             <select id="att-class-select" class="form-select" onchange="loadClassAttendance()">
@@ -526,13 +553,21 @@
                 <div id="homework-post-form" class="card p-3 mb-4" style="display:none;">
                     <h6>Post New Homework</h6>
                     <div class="row g-2">
+                        <div class="col-12" id="hw-template-row">
+                            <select id="hw-template-select" class="form-select form-select-sm" onchange="applyHomeworkTemplate()">
+                                <option value="">— Use a saved template (optional) —</option>
+                            </select>
+                        </div>
                         <div class="col-6"><select id="hw-class" class="form-select"></select></div>
                         <div class="col-6"><input type="date" id="hw-due" class="form-control"></div>
                         <div class="col-12"><input type="text" id="hw-title" class="form-control" placeholder="Title"></div>
                         <div class="col-12"><textarea id="hw-desc" class="form-control" rows="2" placeholder="Description (optional)"></textarea></div>
                         <div class="col-12"><input type="file" id="hw-attachment" class="form-control"></div>
                     </div>
-                    <button class="btn btn-success mt-2 w-100" onclick="postHomework(this)">Post Homework</button>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn btn-success flex-fill" onclick="postHomework(this)">Post Homework</button>
+                        <button class="btn btn-outline-secondary" onclick="saveHomeworkAsTemplate()" title="Save title/description as a reusable template">💾 Save as Template</button>
+                    </div>
                 </div>
                 <div id="homework-child-selector" class="mb-3"></div>
                 <div id="homework-list">Loading homework...</div>
@@ -625,7 +660,9 @@
                         <div id="chat-thread-sub" class="text-muted small"></div>
                     </div>
                     <div id="chat-messages" class="chat-messages-box mb-2"></div>
+                    <div id="chat-quick-replies" class="d-flex gap-1 mb-2 flex-wrap" style="display:none;"></div>
                     <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary" id="chat-quick-reply-btn" style="display:none;" onclick="toggleQuickReplies()" title="Quick replies"><i class="fas fa-bolt"></i></button>
                         <input type="text" id="chat-input" class="form-control" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendChatMessage()">
                         <button class="btn btn-primary" onclick="sendChatMessage()"><i class="fas fa-paper-plane"></i></button>
                     </div>
@@ -677,35 +714,78 @@
 
                 <div id="audit-log-list">Loading audit log...</div>
             </div>
+
+            <div id="student-profile" class="section-panel">
+                <button class="btn btn-sm btn-outline-secondary mb-3" onclick="showSection('student-directory','Student Directory')"><i class="fas fa-arrow-left me-1"></i>Back to Directory</button>
+                <div id="sp-header" class="card p-3 mb-3"></div>
+                <div class="d-flex gap-2 mb-3 flex-wrap" id="sp-tabs">
+                    <button class="btn btn-sm sp-tab-btn active" data-tab="overview" onclick="setProfileTab('overview')">Overview</button>
+                    <button class="btn btn-sm sp-tab-btn" data-tab="attendance" onclick="setProfileTab('attendance')">Attendance</button>
+                    <button class="btn btn-sm sp-tab-btn" data-tab="homework" onclick="setProfileTab('homework')">Homework</button>
+                    <button class="btn btn-sm sp-tab-btn" data-tab="marks" onclick="setProfileTab('marks')">Marks</button>
+                    <button class="btn btn-sm sp-tab-btn" data-tab="fees" onclick="setProfileTab('fees')">Fees</button>
+                    <button class="btn btn-sm sp-tab-btn" data-tab="timeline" onclick="setProfileTab('timeline')">Activity</button>
+                </div>
+                <div id="sp-content"><div class="text-center p-4"><div class="loader" style="margin:auto;border-top-color:var(--amber);"></div></div></div>
+            </div>
+
+            <div id="automations" class="section-panel">
+                <h3 class="fw-bold mb-2">🤖 Automations</h3>
+                <p class="text-muted small mb-3">Toggle automatic reminders and alerts on or off. These run on a daily sweep — see <code>PHASE4-5-SETUP.md</code> for the cron setup.</p>
+                <div id="automation-rules-list">Loading...</div>
+            </div>
         </div> <div class="bottom-nav">
             <div class="nav-item active" id="nav-home" onclick="goHome()">
                 <i class="fas fa-home"></i>Home
             </div>
-            <div class="nav-item" id="nav-manage" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage')">
-                <i class="fas fa-users-cog"></i>Manage
-            </div>
-            <div class="nav-item" id="nav-att" data-role="admin,teacher,student" style="display:none;" onclick="showSection('attendance', 'Attendance')">
-                <i class="fas fa-user-check"></i>Attendance
-            </div>
-            <div class="nav-item" id="nav-fees" data-role="admin,teacher,student" style="display:none;" onclick="showSection('fees', 'Fees')">
-                <i class="fas fa-credit-card"></i>Fees
-            </div>
-            <div class="nav-item" id="nav-mat" data-role="admin,teacher,student" style="display:none;" onclick="showSection('study-material', 'Materials')">
-                <i class="fas fa-book"></i>Materials
-            </div>
-            <div class="nav-item" id="nav-tt" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('timetable', 'Timetable')">
-                <i class="fas fa-calendar-week"></i>Timetable
-            </div>
-            <div class="nav-item" id="nav-hw" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('homework', 'Homework')">
-                <i class="fas fa-tasks"></i>Homework
-            </div>
-            <div class="nav-item" id="nav-rc" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('report-cards', 'Report Cards')">
-                <i class="fas fa-file-invoice"></i>Cards
+            <div class="nav-item" id="nav-classes" data-role="admin,teacher,student,parent" style="display:none;" onclick="goToClasses()">
+                <i class="fas fa-chalkboard"></i><span id="nav-classes-label">Classes</span>
             </div>
             <div class="nav-item" id="nav-chats" data-role="teacher,admin,parent,owner" style="display:none;" onclick="showSection('chat-hub', 'Chats')">
-                <i class="fas fa-comments"></i>Chats
+                <i class="fas fa-comments"></i>Messages
+            </div>
+            <div class="nav-item" id="nav-more" onclick="openMoreSheet()">
+                <i class="fas fa-ellipsis"></i>More
+            </div>
+
+            <!-- Hidden source list: role-gated the same way as before (setupNav
+                 still toggles each item's own inline display), just moved out of
+                 the visible bar and read by openMoreSheet() so nothing is lost —
+                 the review's "9-tab bar" is now Home/Classes/Messages/More. -->
+            <div id="more-nav-source" style="display:none;">
+                <div class="nav-item" id="nav-manage" data-role="admin,teacher" style="display:none;" onclick="showSection('staff-students', 'Manage')">
+                    <i class="fas fa-users-cog"></i>Manage
+                </div>
+                <div class="nav-item" id="nav-att" data-role="admin,teacher,student" style="display:none;" onclick="showSection('attendance', 'Attendance')">
+                    <i class="fas fa-user-check"></i>Attendance
+                </div>
+                <div class="nav-item" id="nav-fees" data-role="admin,teacher,student" style="display:none;" onclick="showSection('fees', 'Fees')">
+                    <i class="fas fa-credit-card"></i>Fees
+                </div>
+                <div class="nav-item" id="nav-mat" data-role="admin,teacher,student" style="display:none;" onclick="showSection('study-material', 'Materials')">
+                    <i class="fas fa-book"></i>Materials
+                </div>
+                <div class="nav-item" id="nav-tt" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('timetable', 'Timetable')">
+                    <i class="fas fa-calendar-week"></i>Timetable
+                </div>
+                <div class="nav-item" id="nav-hw" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('homework', 'Homework')">
+                    <i class="fas fa-tasks"></i>Homework
+                </div>
+                <div class="nav-item" id="nav-rc" data-role="admin,teacher,student,parent" style="display:none;" onclick="showSection('report-cards', 'Report Cards')">
+                    <i class="fas fa-file-invoice"></i>Cards
+                </div>
             </div>
         </div>
+
+        <!-- Quick Action FAB (Phase 6A) -->
+        <button id="quick-action-fab" onclick="toggleQuickActionMenu()" aria-label="Quick actions">
+            <i class="fas fa-plus"></i>
+        </button>
+        <div id="quick-action-menu"></div>
+
+        <!-- "More" bottom sheet (Phase 6A mobile-nav simplification) -->
+        <div id="more-nav-backdrop" onclick="closeMoreSheet()"></div>
+        <div id="more-nav-sheet"></div>
     </div>
 
 <script src="/socket.io/socket.io.js"></script>

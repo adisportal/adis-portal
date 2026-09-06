@@ -378,3 +378,112 @@ small.text-muted, .role-badge, #user-display-id, #user-display-class {
 @media (prefers-reduced-motion: reduce) {
     *, .section-panel, .loader { animation: none !important; transition: none !important; }
 }
+
+/* ===================================================================
+   Phase 6A additions: notification category tabs, Quick Action FAB,
+   bottom-nav "More" sheet, and a shared empty/error state style —
+   visual pass keeps the existing Ink/Amber/Teal palette but leans on
+   amber only for primary actions, not everywhere.
+   =================================================================== */
+.notif-cat-btn {
+    background: var(--cloud-dim, #eef0f5);
+    color: var(--ink, #101A33);
+    border: none;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+.notif-cat-btn.active {
+    background: var(--amber, #D9822B);
+    color: #fff;
+    font-weight: 600;
+}
+.sp-tab-btn {
+    background: var(--cloud-dim, #eef0f5);
+    color: var(--ink, #101A33);
+    border: none;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    padding: 6px 14px;
+}
+.sp-tab-btn.active {
+    background: var(--amber, #D9822B);
+    color: #fff;
+    font-weight: 600;
+}
+
+.state-empty, .state-error {
+    text-align: center;
+    padding: 24px 12px;
+    color: var(--ink-faint, #6b7280);
+    font-size: 0.85rem;
+}
+.state-error { color: var(--clay-red, #B94A3D); }
+.state-error .btn { margin-top: 8px; }
+
+/* Quick Action floating button */
+#quick-action-fab {
+    position: fixed;
+    right: 18px;
+    bottom: 84px;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: var(--amber, #D9822B);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    box-shadow: 0 6px 18px rgba(217,130,43,0.45);
+    z-index: 14000;
+    cursor: pointer;
+    border: none;
+}
+#quick-action-menu {
+    display: none;
+    position: fixed;
+    right: 18px;
+    bottom: 148px;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+    z-index: 14000;
+    min-width: 220px;
+    overflow: hidden;
+}
+#quick-action-menu .qa-item {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line, #eee);
+}
+#quick-action-menu .qa-item:last-child { border-bottom: none; }
+#quick-action-menu .qa-item:hover { background: var(--cloud-dim, #f3f5fa); }
+
+#more-nav-sheet {
+    display: none;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: #fff;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -6px 24px rgba(0,0,0,0.18);
+    z-index: 14500;
+    padding: 14px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+#more-nav-sheet .more-item {
+    padding: 12px 8px;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--line, #eee);
+    cursor: pointer;
+}
+#more-nav-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(16,26,51,0.35);
+    z-index: 14400;
+}
+

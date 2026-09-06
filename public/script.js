@@ -221,6 +221,7 @@
         }
 
         connectChatSocket(user);
+        if (user.role === 'teacher') flushOfflineAttendanceQueue();
     }
 
     // ==========================================
@@ -271,6 +272,88 @@
             const allowedRoles = link.getAttribute('data-role').split(',');
             link.style.display = allowedRoles.includes(role) ? 'block' : 'none';
         });
+
+        // "Classes" bottom-nav shortcut target varies by role (Phase 6A
+        // mobile-nav simplification — one primary tab instead of several).
+        const classesTarget = { admin: ['staff-students', 'Manage', 'Manage'], teacher: ['staff-students', 'Manage', 'Manage'], student: ['attendance', 'Attendance', 'Attendance'], parent: ['timetable', 'Timetable', 'Timetable'] }[role];
+        const label = document.getElementById('nav-classes-label');
+        if (label && classesTarget) label.innerText = classesTarget[2];
+        window._classesTarget = classesTarget;
+    }
+
+    function goToClasses() {
+        const t = window._classesTarget;
+        if (t) showSection(t[0], t[1]);
+    }
+
+    // "More" bottom sheet: reuses the hidden #more-nav-source items'
+    // existing onclick handlers and role-gated visibility (set by
+    // setupNav above) — no logic duplicated, just re-presented as a list.
+    function openMoreSheet() {
+        const source = document.querySelectorAll('#more-nav-source .nav-item');
+        const visible = Array.from(source).filter(el => el.style.display !== 'none');
+        const sheet = document.getElementById('more-nav-sheet');
+        sheet.innerHTML = visible.length === 0
+            ? `<div class="state-empty">Nothing else here for your role.</div>`
+            : visible.map((el, i) => `<div class="more-item" onclick="closeMoreSheet(); document.querySelectorAll('#more-nav-source .nav-item')[${i}].click();">${el.innerHTML}</div>`).join('');
+        sheet.style.display = 'block';
+        document.getElementById('more-nav-backdrop').style.display = 'block';
+    }
+    function closeMoreSheet() {
+        document.getElementById('more-nav-sheet').style.display = 'none';
+        document.getElementById('more-nav-backdrop').style.display = 'none';
+    }
+
+    // Universal Quick Action button (Phase 6A) — role-aware menu of
+    // shortcuts so common tasks don't need a trip through the sidebar.
+    const QUICK_ACTIONS = {
+        teacher: [
+            { label: '📋 Take Attendance', fn: () => showSection('attendance', 'Attendance') },
+            { label: '📚 Post Homework', fn: () => showSection('homework', 'Homework') },
+            { label: '📖 Upload Material', fn: () => showSection('study-material', 'Materials') },
+            { label: '📝 Enter Marks', fn: () => showSection('report-cards', 'Report Cards') },
+            { label: '💬 Message Parent', fn: () => showSection('chat-hub', 'Chats') }
+        ],
+        admin: [
+            { label: '🧑‍🎓 Add Student', fn: () => showSection('staff-students', 'Manage') },
+            { label: '👩‍🏫 Add Teacher', fn: () => showSection('admin-teachers', 'Admin Panel') },
+            { label: '🏫 Create Class', fn: () => showSection('staff-students', 'Manage') },
+            { label: '💰 Record Fee', fn: () => showSection('fees', 'Fees') },
+            { label: '📢 Send Announcement', fn: () => showSection('announcements', 'Announcements') },
+            { label: '📜 View Audit Log', fn: () => showSection('audit-log', 'Audit Log') }
+        ],
+        parent: [
+            { label: '💰 Pay Fee', fn: () => showSection('parent-panel', 'My Children') },
+            { label: '📚 View Homework', fn: () => showSection('homework', 'Homework') },
+            { label: '📆 View Timetable', fn: () => showSection('timetable', 'Timetable') },
+            { label: '📝 Download Report Card', fn: () => showSection('report-cards', 'Report Cards') },
+            { label: '💬 Message Teacher', fn: () => showSection('chat-hub', 'Chats') }
+        ],
+        student: [
+            { label: '📚 View Homework', fn: () => showSection('homework', 'Homework') },
+            { label: '📆 View Timetable', fn: () => showSection('timetable', 'Timetable') },
+            { label: '📈 View Attendance', fn: () => showSection('attendance', 'Attendance') },
+            { label: '📝 Report Cards', fn: () => showSection('report-cards', 'Report Cards') }
+        ]
+    };
+
+    function toggleQuickActionMenu() {
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const menu = document.getElementById('quick-action-menu');
+        const isOpen = menu.style.display === 'block';
+        if (isOpen) { menu.style.display = 'none'; return; }
+
+        const actions = QUICK_ACTIONS[user.role] || [];
+        menu.innerHTML = actions.length === 0
+            ? `<div class="qa-item text-muted">No quick actions for your role.</div>`
+            : actions.map((a, i) => `<div class="qa-item" onclick="runQuickAction(${i})">${a.label}</div>`).join('');
+        window._quickActionsForRole = actions;
+        menu.style.display = 'block';
+    }
+    function runQuickAction(i) {
+        document.getElementById('quick-action-menu').style.display = 'none';
+        const actions = window._quickActionsForRole || [];
+        if (actions[i]) actions[i].fn();
     }
 
     function loadDashboardBasedOnRole(role) {
@@ -312,7 +395,7 @@
 
         if(navMap[id] && document.getElementById(navMap[id])) document.getElementById(navMap[id]).classList.add('active');
 
-        if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); }
+        if (id === 'attendance') { loadClassDropdown(); loadAttendanceSection(); flushOfflineAttendanceQueue(); }
         if (id === 'admin-teachers') { loadClassDropdown(); loadTeachers(); loadClassesForManagement(); }
         if (id === 'student-directory') loadStudentDirectoryClasswise();
         if (id === 'fees') loadFees();
@@ -329,6 +412,7 @@
         if (id === 'attendance') loadAttendanceAnalytics();
         if (id === 'audit-log') loadAuditLog();
         if (id === 'home-dashboard') loadHomeDashboard();
+        if (id === 'automations') loadAutomationRules();
 
         if(document.getElementById('sidebar').classList.contains('active')) toggleSidebar();
     }
@@ -409,20 +493,63 @@
         const isHidden = input.style.display === 'none';
         input.style.display = isHidden ? 'block' : 'none';
         if (isHidden) input.focus();
+        else document.getElementById('global-search-results').style.display = 'none';
     }
-    
+
+    // Global Search (Phase 6A): admins get a real cross-entity search
+    // (students/teachers/classes) hitting /api/admin/search. Every other
+    // role keeps the original lightweight in-page card filter — building
+    // the same rich search for every role's data model wasn't worth it,
+    // admins are the ones juggling hundreds of students.
+    let searchDebounce = null;
     function executeSearch() {
-        const query = document.getElementById('global-search').value.toLowerCase();
+        const query = document.getElementById('global-search').value.trim();
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+
+        if (user.role === 'admin') {
+            const resultsBox = document.getElementById('global-search-results');
+            if (query.length < 2) { resultsBox.style.display = 'none'; return; }
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(async () => {
+                try {
+                    const res = await authFetch(`/api/admin/search?q=${encodeURIComponent(query)}`);
+                    const data = await res.json();
+                    renderGlobalSearchResults(data);
+                } catch (e) {}
+            }, 250);
+            return;
+        }
+
         const activePanel = document.querySelector('.active-panel');
-  
-        // Find all cards within the currently visible section
-        
+        if (!activePanel) return;
         const cards = activePanel.querySelectorAll('.card');
         cards.forEach(card => {
             const text = card.innerText.toLowerCase();
-            // If the card contains the search text, show it; otherwise hide it
-            card.style.display = text.includes(query) ? 'block' : 'none';
+            card.style.display = text.includes(query.toLowerCase()) ? 'block' : 'none';
         });
+    }
+
+    function renderGlobalSearchResults(data) {
+        const box = document.getElementById('global-search-results');
+        const rcLabel = rc => !rc ? '' : `${rc.status}${rc.released ? ' · released' : ''}`;
+        const studentRows = (data.students || []).map(s => `
+            <div class="p-2 border-bottom small" style="cursor:pointer;" onclick="document.getElementById('global-search-results').style.display='none'; openStudentProfile('${s.studentId}');">
+                <div class="d-flex justify-content-between"><strong>${s.name}</strong><span class="text-muted">${s.classId}</span></div>
+                <div class="text-muted" style="font-size:0.75rem;">
+                    Attendance ${s.attendancePct === null ? '—' : s.attendancePct + '%'} ·
+                    Fees ${s.feesOutstanding > 0 ? '₹' + s.feesOutstanding.toLocaleString() + ' due' : 'clear'} ·
+                    HW ${s.homeworkDone}/${s.homeworkTotal}
+                    ${s.reportCardStatus ? ' · Report: ' + rcLabel(s.reportCardStatus) : ''}
+                </div>
+            </div>`).join('');
+        const teacherRows = (data.teachers || []).map(t => `<div class="p-2 border-bottom small">👩‍🏫 ${t.name} <span class="text-muted">(${t.studentId})</span></div>`).join('');
+        const classRows = (data.classes || []).map(c => `<div class="p-2 border-bottom small">🏫 ${c}</div>`).join('');
+
+        const hasAny = studentRows || teacherRows || classRows;
+        box.innerHTML = hasAny
+            ? (studentRows + teacherRows + classRows)
+            : `<div class="p-3 text-muted small text-center">No matches.</div>`;
+        box.style.display = 'block';
     }
     // 2. Maintenance Mode Logic
     async function checkMaintenanceStatus() {
@@ -740,18 +867,102 @@ async function toggleMaintenanceMode() {
         }
     }
 
+    // ==========================================
+    // OFFLINE-FIRST ATTENDANCE (Phase 7B)
+    // Classroom wifi/data is the known pain point, so attendance taken with
+    // no connectivity is queued locally (localStorage, not IndexedDB — it's
+    // a handful of small records, and localStorage needs no async setup)
+    // and synced automatically once the connection returns. Everything
+    // else stays online-only; this is deliberately the one offline use
+    // case worth the complexity, per the roadmap notes.
+    // ==========================================
+    const OFFLINE_QUEUE_KEY = 'adis_offline_attendance_queue';
+    const OFFLINE_CACHE_KEY_PREFIX = 'adis_attendance_cache_';
+
+    function getOfflineQueue() {
+        try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]'); } catch (e) { return []; }
+    }
+    function setOfflineQueue(q) {
+        localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(q));
+        renderOfflineSyncBadge();
+    }
+    function queueAttendanceOffline(payload) {
+        const q = getOfflineQueue();
+        // Replace any existing queued entry for the same student+date so
+        // rapid re-tapping while offline doesn't pile up duplicates.
+        const filtered = q.filter(item => !(item.studentId === payload.studentId && item.date === payload.date && item.classId === payload.classId));
+        filtered.push({ ...payload, queuedAt: new Date().toISOString() });
+        setOfflineQueue(filtered);
+    }
+    async function flushOfflineAttendanceQueue() {
+        const q = getOfflineQueue();
+        if (q.length === 0) return;
+        const remaining = [];
+        for (const item of q) {
+            try {
+                await authFetch('/api/attendance/update', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId: item.studentId, date: item.date, status: item.status, classId: item.classId })
+                });
+            } catch (e) {
+                remaining.push(item); // still offline or request failed — keep it queued
+            }
+        }
+        setOfflineQueue(remaining);
+        if (remaining.length < q.length) {
+            const classId = document.getElementById('att-class-select');
+            if (classId && classId.value) loadClassAttendance();
+        }
+    }
+    function renderOfflineSyncBadge() {
+        const el = document.getElementById('offline-sync-badge');
+        if (!el) return;
+        const count = getOfflineQueue().length;
+        el.innerHTML = count > 0
+            ? `<span class="badge bg-warning text-dark">🟡 ${count} pending — will sync</span> <button class="btn btn-sm btn-link p-0" onclick="flushOfflineAttendanceQueue()">Sync now</button>`
+            : `<span class="badge bg-success">✓ Synced</span>`;
+    }
+    window.addEventListener('online', flushOfflineAttendanceQueue);
+
+    function cacheAttendanceRoster(classId, date, students, attMap) {
+        try { localStorage.setItem(OFFLINE_CACHE_KEY_PREFIX + classId + '_' + date, JSON.stringify({ students, attMap })); } catch (e) {}
+    }
+    function readCachedAttendanceRoster(classId, date) {
+        try { return JSON.parse(localStorage.getItem(OFFLINE_CACHE_KEY_PREFIX + classId + '_' + date) || 'null'); } catch (e) { return null; }
+    }
+
     async function loadClassAttendance() {
         const classId = document.getElementById('att-class-select').value;
         const date = document.getElementById('att-date-select').value;
         if (!classId || !date) return;
         const listContainer = document.getElementById('class-student-list');
         listContainer.innerHTML = "Loading...";
-        const studentsRes = await authFetch(`/api/students/class/${classId}`);
-        const students = await studentsRes.json();
-        const attRes = await authFetch(`/api/attendance/${classId}/${date}`);
-        const existingAtt = await attRes.json();
-        const attMap = {};
-        existingAtt.forEach(a => attMap[a.studentId] = a.status);
+        renderOfflineSyncBadge();
+
+        let students, attMap = {};
+        try {
+            const studentsRes = await authFetch(`/api/students/class/${classId}`);
+            students = await studentsRes.json();
+            const attRes = await authFetch(`/api/attendance/${classId}/${date}`);
+            const existingAtt = await attRes.json();
+            existingAtt.forEach(a => attMap[a.studentId] = a.status);
+            cacheAttendanceRoster(classId, date, students, attMap);
+        } catch (e) {
+            // Offline / request failed — fall back to the last successful
+            // fetch for this exact class+date, if we have one cached.
+            const cached = readCachedAttendanceRoster(classId, date);
+            if (!cached) {
+                listContainer.innerHTML = `<div class="state-error">No connection, and no cached roster for this class/date yet. Please reconnect once to load it.</div>`;
+                return;
+            }
+            students = cached.students;
+            attMap = cached.attMap;
+        }
+
+        // Overlay anything still queued offline — it reflects the
+        // teacher's latest un-synced taps, not what the server has yet.
+        getOfflineQueue().filter(q => q.classId === classId && q.date === date).forEach(q => { attMap[q.studentId] = q.status; });
+
         listContainer.innerHTML = students.map(s => `
             <div class="d-flex justify-content-between align-items-center border-bottom py-2">
                 <span>${s.name}</span>
@@ -818,10 +1029,14 @@ async function toggleMaintenanceMode() {
         alert(result.message);
     }
 
+    let bulkSelectedStudents = new Set();
+
     async function loadStudentDirectoryClasswise() {
         const container = document.getElementById('student-directory-container');
         const user = JSON.parse(localStorage.getItem('currentUser'));
         container.innerHTML = "Loading...";
+        bulkSelectedStudents.clear();
+        updateBulkBar();
 
         try {
             const res = await authFetch('/api/teacher/students/list', {
@@ -831,13 +1046,11 @@ async function toggleMaintenanceMode() {
             });
             const students = await res.json();
 
-            // 🔴 DEBUG LINE: Open your browser console (F12) to see what came back!
-            console.log("Students array received from server:", students);
-           
             if (!students || students.length === 0) {
-                container.innerHTML = "No students found.";
+                container.innerHTML = `<div class="state-empty">No students found.</div>`;
                 return;
             }
+            window._directoryStudents = students;
 
             const grouped = students.reduce((acc, student) => {
                 const cls = student.classId || "Unassigned";
@@ -850,8 +1063,11 @@ async function toggleMaintenanceMode() {
                 <div class="card p-3 mb-3">
                     <h5 class="fw-bold text-primary mb-3">Class: ${className}</h5>
                     ${grouped[className].map(s => `
-                        <div class="d-flex justify-content-between border-bottom py-1">
-                            <span>${s.name}</span>
+                        <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="checkbox" class="bulk-student-checkbox" data-sid="${s.studentId}" onchange="toggleBulkSelect('${s.studentId}')">
+                                <span class="text-decoration-underline" style="cursor:pointer;" onclick="openStudentProfile('${s.studentId}')">${s.name}</span>
+                            </div>
                             <small class="text-muted">ID: ${s.studentId}</small>
                         </div>
                     `).join('')}
@@ -860,7 +1076,201 @@ async function toggleMaintenanceMode() {
 
         } catch (e) {
             console.error("Directory component error:", e);
-            container.innerHTML = "Error loading directory.";
+            container.innerHTML = `<div class="state-error">Couldn't load the student directory. <button class="btn btn-sm btn-outline-secondary" onclick="loadStudentDirectoryClasswise()">Retry</button></div>`;
+        }
+    }
+
+    // ==========================================
+    // BULK ACTIONS (Phase 6B)
+    // ==========================================
+    function toggleBulkSelect(studentId) {
+        if (bulkSelectedStudents.has(studentId)) bulkSelectedStudents.delete(studentId);
+        else bulkSelectedStudents.add(studentId);
+        updateBulkBar();
+    }
+    function updateBulkBar() {
+        const bar = document.getElementById('bulk-action-bar');
+        const count = document.getElementById('bulk-selected-count');
+        if (!bar || !count) return;
+        count.innerText = bulkSelectedStudents.size;
+        bar.classList.toggle('d-none', bulkSelectedStudents.size === 0);
+    }
+    function clearBulkSelection() {
+        bulkSelectedStudents.clear();
+        document.querySelectorAll('.bulk-student-checkbox').forEach(cb => cb.checked = false);
+        updateBulkBar();
+    }
+    async function bulkChangeClassPrompt() {
+        const newClassId = prompt(`Move ${bulkSelectedStudents.size} student(s) to which class? (enter exact class name)`);
+        if (!newClassId || !newClassId.trim()) return;
+        try {
+            const res = await authFetch('/api/admin/students/bulk-class-change', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentIds: Array.from(bulkSelectedStudents), newClassId: newClassId.trim() })
+            });
+            const result = await res.json();
+            alert(result.success ? `Moved ${result.updated} student(s) to ${newClassId}.` : result.message || "Failed.");
+            if (result.success) loadStudentDirectoryClasswise();
+        } catch (e) { alert("Couldn't update classes. Please try again."); }
+    }
+    async function bulkNotifyParentsPrompt() {
+        const message = prompt(`Message to send to parents of ${bulkSelectedStudents.size} selected student(s):`);
+        if (!message || !message.trim()) return;
+        try {
+            const res = await authFetch('/api/admin/students/bulk-notify-parents', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentIds: Array.from(bulkSelectedStudents), message })
+            });
+            const result = await res.json();
+            alert(result.success ? `Notified parents of ${result.notified} student(s).` : result.message || "Failed.");
+        } catch (e) { alert("Couldn't send notifications. Please try again."); }
+    }
+    function bulkExportCsv() {
+        const all = window._directoryStudents || [];
+        const selected = all.filter(s => bulkSelectedStudents.has(s.studentId));
+        if (selected.length === 0) return;
+        const rows = [['Student ID', 'Name', 'Class'], ...selected.map(s => [s.studentId, s.name, s.classId || ''])];
+        const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `students-export-${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // ==========================================
+    // STUDENT PROFILE (Phase 6A) — single source of truth, tabbed.
+    // ==========================================
+    let spCurrentStudentId = null;
+    let spData = {};
+    let spActiveTab = 'overview';
+
+    async function openStudentProfile(studentId) {
+        spCurrentStudentId = studentId;
+        spActiveTab = 'overview';
+        showSection('student-profile', 'Student Profile');
+        document.querySelectorAll('.sp-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === 'overview'));
+        document.getElementById('sp-header').innerHTML = `<div class="text-muted">Loading...</div>`;
+        document.getElementById('sp-content').innerHTML = `<div class="text-center p-4"><div class="loader" style="margin:auto;border-top-color:var(--amber);"></div></div>`;
+
+        try {
+            const [profileRes, attendanceRes, homeworkRes, marksRes, timelineRes] = await Promise.all([
+                authFetch(`/api/student/profile/${studentId}`),
+                authFetch(`/api/student/attendance/${studentId}`),
+                authFetch(`/api/student/homework/${studentId}`),
+                authFetch(`/api/student/marks/${studentId}`),
+                authFetch(`/api/student/timeline/${studentId}`)
+            ]);
+            spData = {
+                profile: await profileRes.json(),
+                attendance: await attendanceRes.json(),
+                homework: await homeworkRes.json(),
+                marks: await marksRes.json(),
+                timeline: await timelineRes.json()
+            };
+            renderProfileHeader();
+            renderProfileTab();
+        } catch (e) {
+            document.getElementById('sp-content').innerHTML = `<div class="state-error">Couldn't load this student's profile. <button class="btn btn-sm btn-outline-secondary" onclick="openStudentProfile('${studentId}')">Retry</button></div>`;
+        }
+    }
+
+    function renderProfileHeader() {
+        const p = spData.profile || {};
+        const present = (spData.attendance || []).filter(a => a.status === 'Present').length;
+        const attTotal = (spData.attendance || []).length;
+        const attPct = attTotal ? Math.round((present / attTotal) * 100) : null;
+        document.getElementById('sp-header').innerHTML = `
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <h4 class="fw-bold mb-0">${p.name || spCurrentStudentId}</h4>
+                    <span class="text-muted small">${p.classId || ''} · ID: ${p.studentId || spCurrentStudentId}</span>
+                </div>
+                <div class="d-flex gap-3 text-center">
+                    <div><div class="fw-bold">${attPct === null ? '—' : attPct + '%'}</div><div class="small text-muted">Attendance</div></div>
+                    <div><div class="fw-bold">₹${Math.max((p.totalFees||0)-(p.feesPaid||0),0).toLocaleString()}</div><div class="small text-muted">Fees Due</div></div>
+                </div>
+            </div>
+            <div class="mt-2 d-flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-outline-primary" onclick="contextMessageParent('${p.studentId || spCurrentStudentId}')"><i class="fas fa-comment me-1"></i>Message Parent</button>
+            </div>`;
+    }
+
+    function setProfileTab(tab) {
+        spActiveTab = tab;
+        document.querySelectorAll('.sp-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        renderProfileTab();
+    }
+
+    function renderProfileTab() {
+        const content = document.getElementById('sp-content');
+        const p = spData.profile || {};
+
+        if (spActiveTab === 'overview') {
+            content.innerHTML = `
+                <div class="card p-3">
+                    <div class="row g-2 small">
+                        <div class="col-6"><strong>Father's Name:</strong> ${p.fatherName || '—'}</div>
+                        <div class="col-6"><strong>Mother's Name:</strong> ${p.motherName || '—'}</div>
+                        <div class="col-6"><strong>Date of Birth:</strong> ${p.dob || '—'}</div>
+                        <div class="col-6"><strong>Fee Due Date:</strong> ${p.feeDueDate || '—'}</div>
+                    </div>
+                </div>`;
+        } else if (spActiveTab === 'attendance') {
+            const rows = (spData.attendance || []).slice(0, 30);
+            content.innerHTML = rows.length === 0 ? `<div class="state-empty">No attendance records yet.</div>` :
+                `<div class="card p-2">${rows.map(a => `<div class="d-flex justify-content-between border-bottom py-1 small"><span>${a.date}</span><span class="${a.status==='Present'?'text-success':'text-danger'}">${a.status}</span></div>`).join('')}</div>`;
+        } else if (spActiveTab === 'homework') {
+            const rows = spData.homework || [];
+            content.innerHTML = rows.length === 0 ? `<div class="state-empty">No homework posted for this class yet.</div>` :
+                `<div class="card p-2">${rows.map(h => `<div class="d-flex justify-content-between border-bottom py-1 small"><span>${h.title}${h.dueDate ? ' · due ' + fmtDate(h.dueDate) : ''}</span><span class="${h.done?'text-success':'text-muted'}">${h.done ? '✓ Done' : 'Pending'}</span></div>`).join('')}</div>`;
+        } else if (spActiveTab === 'marks') {
+            const rows = spData.marks || [];
+            content.innerHTML = rows.length === 0 ? `<div class="state-empty">No exams recorded yet.</div>` :
+                `<div class="card p-2">${rows.map(m => `<div class="d-flex justify-content-between border-bottom py-1 small"><span>${m.examName} <span class="text-muted">(${m.status}${m.released?' · released':''})</span></span><span>${m.percentage}%${m.rank ? ' · Rank ' + m.rank : ''}</span></div>`).join('')}</div>`;
+        } else if (spActiveTab === 'fees') {
+            content.innerHTML = `
+                <div class="card p-3 small">
+                    <div class="d-flex justify-content-between border-bottom py-1"><span>Total Fees</span><span>₹${(p.totalFees||0).toLocaleString()}</span></div>
+                    <div class="d-flex justify-content-between border-bottom py-1"><span>Paid</span><span>₹${(p.feesPaid||0).toLocaleString()}</span></div>
+                    <div class="d-flex justify-content-between border-bottom py-1"><span>Outstanding</span><span class="fw-bold ${((p.totalFees||0)-(p.feesPaid||0))>0?'text-danger':''}">₹${Math.max((p.totalFees||0)-(p.feesPaid||0),0).toLocaleString()}</span></div>
+                    <div class="d-flex justify-content-between py-1"><span>Due Date</span><span>${p.feeDueDate || '—'}</span></div>
+                </div>`;
+        } else if (spActiveTab === 'timeline') {
+            const rows = spData.timeline || [];
+            content.innerHTML = rows.length === 0 ? `<div class="state-empty">No activity recorded yet.</div>` :
+                `<div class="card p-2">${rows.map(e => `<div class="border-bottom py-2 small"><span class="me-2">${e.icon}</span>${e.text}<div class="text-muted" style="font-size:0.7rem;">${new Date(e.date).toLocaleString()}</div></div>`).join('')}</div>`;
+        }
+    }
+
+    // Contextual action (Phase 6B): jump straight to messaging a student's
+    // parent from their profile, instead of hunting through the chat picker.
+    // Only meaningful for teachers (the only role the underlying chat model
+    // lets message a parent) — admins/others get a friendly explanation.
+    async function contextMessageParent(studentId) {
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        if (user.role !== 'teacher') {
+            return alert("Only this student's teacher can message their parent directly.");
+        }
+        try {
+            const parentRes = await authFetch(`/api/chat/parent-for-student/${studentId}`);
+            const parentResult = await parentRes.json();
+            if (!parentResult.success) return alert(parentResult.message || "Couldn't find a linked parent account.");
+
+            const res = await authFetch('/api/chat/threads/start', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otherPartyId: parentResult.parentId, studentId })
+            });
+            const result = await res.json();
+            if (result.success && result.thread && result.thread._id) {
+                showSection('chat-hub', 'Chats');
+                setTimeout(() => { if (typeof openChatThread === 'function') openChatThread(result.thread._id); }, 150);
+            } else {
+                alert(result.message || "Couldn't start a conversation with this student's parent.");
+            }
+        } catch (e) {
+            alert("Couldn't start a conversation. Please try again.");
         }
     }
 
@@ -868,11 +1278,18 @@ async function toggleMaintenanceMode() {
         const date = document.getElementById('att-date-select').value;
         const classId = document.getElementById('att-class-select').value;
 
-        await authFetch('/api/attendance/update', { 
-            method: 'POST', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify({ studentId, date, status, classId }) 
-        });
+        try {
+            await authFetch('/api/attendance/update', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ studentId, date, status, classId }) 
+            });
+        } catch (e) {
+            // No connection — queue it and keep going. The teacher's tap
+            // still shows immediately (loadClassAttendance overlays the
+            // queue), it just isn't confirmed by the server yet.
+            queueAttendanceOffline({ studentId, date, status, classId });
+        }
 
         loadClassAttendance();
     }
@@ -887,16 +1304,28 @@ async function toggleMaintenanceMode() {
         if (!confirm(`Mark every student in ${classId} as ${status} for ${date}? You can still tap individual students to change exceptions afterward.`)) return;
 
         try {
-            const studentsRes = await authFetch(`/api/students/class/${classId}`);
-            const students = await studentsRes.json();
-            await Promise.all(students.map(s => authFetch('/api/attendance/update', {
+            let students;
+            try {
+                const studentsRes = await authFetch(`/api/students/class/${classId}`);
+                students = await studentsRes.json();
+            } catch (e) {
+                const cached = readCachedAttendanceRoster(classId, date);
+                if (!cached) throw e;
+                students = cached.students;
+            }
+            const results = await Promise.allSettled(students.map(s => authFetch('/api/attendance/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ studentId: s.studentId, date, status, classId })
             })));
+            // Anything that failed (offline mid-bulk-action) gets queued
+            // individually instead of silently losing that student's mark.
+            results.forEach((r, i) => {
+                if (r.status === 'rejected') queueAttendanceOffline({ studentId: students[i].studentId, date, status, classId });
+            });
             loadClassAttendance();
         } catch (e) {
-            alert("Couldn't mark attendance for the whole class. Please try again.");
+            alert("Couldn't load the class roster to mark attendance. Please try again.");
         }
     }
     function markAllPresent() { bulkMarkAttendance('Present'); }
@@ -1360,6 +1789,36 @@ async function toggleMaintenanceMode() {
             </div>`;
     }
 
+    // ==========================================
+    // AUTOMATION RULES (Phase 7A)
+    // ==========================================
+    async function loadAutomationRules() {
+        const list = document.getElementById('automation-rules-list');
+        if (!list) return;
+        list.innerHTML = "Loading...";
+        try {
+            const res = await authFetch('/api/admin/automation-rules');
+            const rules = await res.json();
+            list.innerHTML = rules.map(r => `
+                <div class="card p-3 mb-2 d-flex flex-row justify-content-between align-items-center">
+                    <span class="small">${r.label}</span>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" ${r.enabled ? 'checked' : ''} onchange="toggleAutomationRule('${r.key}', this.checked)">
+                    </div>
+                </div>`).join('');
+        } catch (e) {
+            list.innerHTML = `<div class="state-error">Couldn't load automation rules. <button class="btn btn-sm btn-outline-secondary" onclick="loadAutomationRules()">Retry</button></div>`;
+        }
+    }
+    async function toggleAutomationRule(ruleKey, enabled) {
+        try {
+            await authFetch('/api/admin/automation-rules/toggle', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ruleKey, enabled })
+            });
+        } catch (e) { alert("Couldn't save that setting. Please try again."); loadAutomationRules(); }
+    }
+
     async function loadOwnerAnalytics() {
         const box = document.getElementById('owner-analytics');
         if (!box) return;
@@ -1699,6 +2158,17 @@ async function toggleMaintenanceMode() {
             document.getElementById('new-class-name').value = '';
             loadClassDropdown();
         }
+    }
+    // Pre-existing bug fix: the "Create Class" button called a function
+    // (handleCreateClassAndRefresh) that was never defined, so it did
+    // nothing. Wired to the real createClass() here, and also refreshes
+    // the classes-management list if it's currently visible.
+    function handleCreateClassAndRefresh() {
+        createClass().then(() => {
+            if (typeof loadClassesForManagement === 'function' && document.getElementById('classes-list-container')) {
+                loadClassesForManagement();
+            }
+        });
     }
 
     // --- UPGRADED CLASS DROPDOWN SYSTEM ---
@@ -2184,9 +2654,46 @@ function clearAppData() {
         document.getElementById('chat-thread-view').style.display = 'block';
         document.getElementById('chat-thread-title').innerText = thread ? thread.otherPartyName : 'Chat';
         document.getElementById('chat-thread-sub').innerText = thread && thread.studentName ? `Regarding ${thread.studentName}` : '';
+
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const qrBtn = document.getElementById('chat-quick-reply-btn');
+        if (qrBtn) qrBtn.style.display = user.role === 'teacher' ? 'inline-block' : 'none';
+        document.getElementById('chat-quick-replies').style.display = 'none';
+
         await loadChatMessages();
         if (chatMessagePoll) clearInterval(chatMessagePoll);
         chatMessagePoll = setInterval(loadChatMessages, 8000);
+    }
+
+    // Quick-reply chat messages (Phase 6B) — teacher-side canned messages
+    // insertable into the composer instead of retyping common notes.
+    async function toggleQuickReplies() {
+        const box = document.getElementById('chat-quick-replies');
+        if (box.style.display === 'flex') { box.style.display = 'none'; return; }
+        try {
+            const res = await authFetch('/api/chat/quick-replies');
+            const data = await res.json();
+            const all = [...(data.defaults || []), ...((data.saved || []).map(s => s.text))];
+            box.innerHTML = all.map(t => `<button class="btn btn-sm btn-outline-secondary" style="font-size:0.72rem;" onclick="insertQuickReply(this)">${escapeHtml(t.length > 28 ? t.slice(0, 28) + '…' : t)}</button>`).join('') +
+                `<button class="btn btn-sm btn-link" onclick="saveNewQuickReply()">+ Save new</button>`;
+            window._qrFullTexts = all;
+            box.querySelectorAll('button').forEach((b, i) => { if (all[i]) b.dataset.full = all[i]; });
+            box.style.display = 'flex';
+        } catch (e) {}
+    }
+    function insertQuickReply(btn) {
+        const text = btn.dataset.full;
+        if (!text) return;
+        document.getElementById('chat-input').value = text;
+        document.getElementById('chat-quick-replies').style.display = 'none';
+    }
+    async function saveNewQuickReply() {
+        const text = prompt("New quick-reply message:");
+        if (!text || !text.trim()) return;
+        try {
+            await authFetch('/api/chat/quick-replies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+            toggleQuickReplies(); toggleQuickReplies();
+        } catch (e) {}
     }
 
     function closeChatThread(skipReload) {
@@ -2287,30 +2794,48 @@ function clearAppData() {
     }
 
     // ==========================================
+    // ==========================================
     // NOTIFICATIONS (polled every 30s, see activateApp)
     // ==========================================
+    let notifCache = [];
+    let notifCategory = 'all';
+    const NOTIF_CATEGORY_MAP = { academic: ['exam', 'homework', 'feedback', 'academic'], fees: ['fees'], attendance: ['attendance'], messages: ['chat'] };
+
+    function setNotifCategory(cat) {
+        notifCategory = cat;
+        document.querySelectorAll('.notif-cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+        renderNotifications();
+    }
+
+    function renderNotifications() {
+        const list = document.getElementById('notif-list');
+        if (!list) return;
+        const items = notifCategory === 'all'
+            ? notifCache
+            : notifCache.filter(n => (NOTIF_CATEGORY_MAP[notifCategory] || []).includes(n.type));
+
+        list.innerHTML = items.length === 0
+            ? `<p class="text-muted small text-center m-0">No notifications here.</p>`
+            : items.map(n => `
+                <div class="p-2 border-bottom small ${n.read ? '' : 'fw-bold'}">
+                    ${n.message}
+                    <div class="text-muted" style="font-weight:normal;">${new Date(n.date).toLocaleString()}</div>
+                </div>
+            `).join('');
+    }
+
     async function loadNotifications() {
         try {
             const res = await authFetch('/api/notifications');
             if (!res.ok) return;
-            const items = await res.json();
-            const unread = items.filter(n => !n.read).length;
+            notifCache = await res.json();
+            const unread = notifCache.filter(n => !n.read).length;
             const badge = document.getElementById('notif-badge');
             if (badge) {
                 badge.style.display = unread > 0 ? 'inline-block' : 'none';
                 badge.innerText = unread > 9 ? '9+' : unread;
             }
-            const list = document.getElementById('notif-list');
-            if (list) {
-                list.innerHTML = items.length === 0
-                    ? `<p class="text-muted small text-center m-0">No notifications yet.</p>`
-                    : items.map(n => `
-                        <div class="p-2 border-bottom small ${n.read ? '' : 'fw-bold'}">
-                            ${n.message}
-                            <div class="text-muted" style="font-weight:normal;">${new Date(n.date).toLocaleString()}</div>
-                        </div>
-                    `).join('');
-            }
+            renderNotifications();
         } catch (e) {}
     }
 
@@ -2345,6 +2870,7 @@ function clearAppData() {
                 const classes = await res.json();
                 document.getElementById('hw-class').innerHTML = classes.map(c => `<option value="${c.className}">${escapeHtml(c.className)}</option>`).join('') || '<option value="">No classes yet</option>';
             } catch (e) {}
+            loadHomeworkTemplates();
             renderHomeworkList(await (await authFetch('/api/homework/mine')).json(), true);
             return;
         }
@@ -2378,6 +2904,7 @@ function clearAppData() {
 
     function renderHomeworkList(items, isStaff) {
         const list = document.getElementById('homework-list');
+        window._hwItemsById = Object.fromEntries((items || []).map(h => [h._id, h]));
         if (!items || items.length === 0) { list.innerHTML = `<div class="card p-3 text-muted small">No homework posted yet.</div>`; return; }
         list.innerHTML = items.map(h => {
             const dueBadge = h.dueDate
@@ -2388,7 +2915,7 @@ function clearAppData() {
                        <input class="form-check-input" type="checkbox" id="hw-done-${h._id}" ${h.done ? 'checked' : ''} onchange="toggleHomeworkDone('${h._id}', this.checked)">
                        <label class="form-check-label small" for="hw-done-${h._id}">${h.done ? 'Completed' : 'Mark as done'}</label>
                    </div>` : '';
-            const delBtn = isStaff ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteHomework('${h._id}')"><i class="fas fa-trash"></i></button>` : '';
+            const delBtn = isStaff ? `<button class="btn btn-sm btn-outline-secondary" onclick="duplicateHomework('${h._id}')" title="Duplicate with a new date"><i class="fas fa-copy"></i></button> <button class="btn btn-sm btn-outline-danger" onclick="deleteHomework('${h._id}')"><i class="fas fa-trash"></i></button>` : '';
             return `
                 <div class="card p-3 mb-2">
                     <div class="d-flex justify-content-between align-items-start">
@@ -2403,6 +2930,53 @@ function clearAppData() {
                     </div>
                 </div>`;
         }).join('');
+    }
+
+    // Homework templates (Phase 6B)
+    async function loadHomeworkTemplates() {
+        try {
+            const res = await authFetch('/api/homework/templates');
+            const templates = await res.json();
+            window._hwTemplatesById = Object.fromEntries(templates.map(t => [t._id, t]));
+            const sel = document.getElementById('hw-template-select');
+            if (sel) sel.innerHTML = `<option value="">— Use a saved template (optional) —</option>` +
+                templates.map(t => `<option value="${t._id}">${escapeHtml(t.title)}</option>`).join('');
+        } catch (e) {}
+    }
+    function applyHomeworkTemplate() {
+        const id = document.getElementById('hw-template-select').value;
+        if (!id) return;
+        const t = (window._hwTemplatesById || {})[id];
+        if (!t) return;
+        document.getElementById('hw-title').value = t.title;
+        document.getElementById('hw-desc').value = t.description || '';
+    }
+    async function saveHomeworkAsTemplate() {
+        const title = document.getElementById('hw-title').value.trim();
+        const description = document.getElementById('hw-desc').value.trim();
+        if (!title) return alert("Enter a title before saving it as a template.");
+        try {
+            const res = await authFetch('/api/homework/templates', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description })
+            });
+            const result = await res.json();
+            if (result.success) { alert("Saved as a reusable template."); loadHomeworkTemplates(); }
+            else alert(result.message || "Couldn't save the template.");
+        } catch (e) { alert("Couldn't save the template. Please try again."); }
+    }
+    // "Duplicate" (Phase 6B): prefill the post form from an existing
+    // homework post, leaving the date blank for the teacher to set fresh —
+    // faster than retyping a near-identical weekly assignment.
+    function duplicateHomework(id) {
+        const h = (window._hwItemsById || {})[id];
+        if (!h) return;
+        document.getElementById('hw-title').value = h.title;
+        document.getElementById('hw-desc').value = h.description || '';
+        document.getElementById('hw-due').value = '';
+        const classSel = document.getElementById('hw-class');
+        if (classSel) classSel.value = h.classId;
+        document.getElementById('homework-post-form').scrollIntoView({ behavior: 'smooth' });
     }
 
     async function postHomework(btn) {
@@ -2589,7 +3163,7 @@ function clearAppData() {
 
         const editable = config.status === 'draft';
         const table = document.getElementById('rc-grid-table');
-        let thead = `<thead><tr><th>Student</th>${config.subjects.map(s => `<th>${escapeHtml(s.name)}<br><small class="text-muted">/${s.maxMarks}</small></th>`).join('')}<th>Overall</th><th>%</th><th>Rank</th><th>Released</th></tr></thead>`;
+        let thead = `<thead><tr><th>Student</th>${config.subjects.map(s => `<th>${escapeHtml(s.name)}<br><small class="text-muted">/${s.maxMarks}</small></th>`).join('')}<th>Overall</th><th>%</th><th>Rank</th><th>Remarks ${editable ? `<button class="btn btn-sm btn-link p-0" style="font-size:0.7rem;" onclick="addCommentToBank()" title="Save a new reusable comment">+ bank</button>` : ''}</th><th>Released</th></tr></thead>`;
         let tbody = '<tbody>' + rows.map((r, i) => `
             <tr>
                 <td>${escapeHtml(r.name)}<br><small class="text-muted">${r.studentId}</small></td>
@@ -2597,6 +3171,10 @@ function clearAppData() {
                 <td>${r.overallMarks}/${r.overallTotal}</td>
                 <td>${r.percentage}%</td>
                 <td>${r.rank ? '#' + r.rank : '-'}</td>
+                <td style="min-width:180px;">
+                    <input type="text" class="form-control form-control-sm rc-remark-input mb-1" data-row="${i}" value="${escapeHtml(r.remarks || '')}" placeholder="Remarks..." ${editable ? '' : 'disabled'}>
+                    ${editable ? `<select class="form-select form-select-sm rc-remark-picker" data-row="${i}" onchange="applyRemarkPick(this)"><option value="">Insert saved comment...</option></select>` : ''}
+                </td>
                 <td>
                     ${config.status === 'verified'
                         ? `<div class="form-check form-switch">
@@ -2606,6 +3184,7 @@ function clearAppData() {
                 </td>
             </tr>`).join('') + '</tbody>';
         table.innerHTML = thead + tbody;
+        if (editable) loadCommentBankIntoPickers();
 
         const actions = document.getElementById('rc-grid-actions');
         let html = '';
@@ -2633,6 +3212,11 @@ function clearAppData() {
             if (!byRow[i]) byRow[i] = { studentId: rcCurrentGridRows[i].studentId, marks: {} };
             if (inp.value !== '') byRow[i].marks[inp.dataset.subject] = parseFloat(inp.value);
         });
+        document.querySelectorAll('.rc-remark-input').forEach(inp => {
+            const i = inp.dataset.row;
+            if (!byRow[i]) byRow[i] = { studentId: rcCurrentGridRows[i].studentId, marks: {} };
+            byRow[i].remarks = inp.value;
+        });
         const entries = Object.values(byRow);
         try {
             const res = await authFetch(`/api/exams/${encodeURIComponent(rcCurrentClass)}/${encodeURIComponent(rcCurrentExam)}/marks`, {
@@ -2643,6 +3227,39 @@ function clearAppData() {
             alert("Marks saved.");
             openExamGrid(rcCurrentClass, rcCurrentExam);
         } catch (e) { alert("Couldn't save marks."); }
+    }
+
+    // Report-card comment bank helpers (Phase 6B)
+    async function loadCommentBankIntoPickers() {
+        try {
+            const res = await authFetch('/api/report-cards/comment-bank');
+            const comments = await res.json();
+            window._rcCommentBank = comments;
+            const options = comments.map(c => `<option value="${escapeHtml(c.text)}">${escapeHtml(c.text.slice(0, 40))}${c.text.length > 40 ? '…' : ''}</option>`).join('');
+            document.querySelectorAll('.rc-remark-picker').forEach(sel => {
+                sel.innerHTML = `<option value="">Insert saved comment...</option>` + options;
+            });
+        } catch (e) {}
+    }
+    function applyRemarkPick(selectEl) {
+        const text = selectEl.value;
+        if (!text) return;
+        const row = selectEl.dataset.row;
+        const input = document.querySelector(`.rc-remark-input[data-row="${row}"]`);
+        if (input) input.value = text;
+        selectEl.value = '';
+    }
+    async function addCommentToBank() {
+        const text = prompt("New reusable comment (e.g. \"Strong conceptual understanding.\"):");
+        if (!text || !text.trim()) return;
+        try {
+            const res = await authFetch('/api/report-cards/comment-bank', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
+            });
+            const result = await res.json();
+            if (result.success) loadCommentBankIntoPickers();
+            else alert(result.message || "Couldn't save the comment.");
+        } catch (e) { alert("Couldn't save the comment."); }
     }
 
     async function submitExamForVerification() {

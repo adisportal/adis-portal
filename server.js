@@ -448,6 +448,123 @@ app.post('/api/owner/onboard', requireAuth, requireRole('owner'), async (req, re
     }
 });
 
+// Report-card comment bank (Phase 6B): reusable, editable teacher remarks
+// instead of retyping fresh comments per student every exam cycle.
+app.post('/api/report-cards/comment-bank', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text || !text.trim()) return res.status(400).json({ success: false, message: "Comment text is required." });
+        await db.collection('reportCardComments').insertOne({ schoolId: req.currentUser.schoolId, teacherId: req.currentUser.studentId, text: text.trim(), createdAt: new Date() });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+app.get('/api/report-cards/comment-bank', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const comments = await db.collection('reportCardComments').find({ schoolId: req.currentUser.schoolId, teacherId: req.currentUser.studentId }).sort({ createdAt: -1 }).toArray();
+        res.json(comments);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+app.delete('/api/report-cards/comment-bank/:id', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        await db.collection('reportCardComments').deleteOne({ _id: new ObjectId(req.params.id), teacherId: req.currentUser.studentId });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// Quick-reply chat messages (Phase 6B): teacher-side canned messages
+// insertable into the chat composer instead of retyping common notes.
+app.post('/api/chat/quick-replies', requireAuth, requireRole('teacher'), async (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text || !text.trim()) return res.status(400).json({ success: false, message: "Message text is required." });
+        await db.collection('chatQuickReplies').insertOne({ schoolId: req.currentUser.schoolId, teacherId: req.currentUser.studentId, text: text.trim(), createdAt: new Date() });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+app.get('/api/chat/quick-replies', requireAuth, requireRole('teacher'), async (req, res) => {
+    try {
+        const defaults = ['Homework reminder for tonight.', 'A quick note about attendance — please contact the school.', 'Excellent work this week!', 'Could you please contact the school office?', 'Requesting a parent-teacher meeting — please let us know your availability.'];
+        const saved = await db.collection('chatQuickReplies').find({ schoolId: req.currentUser.schoolId, teacherId: req.currentUser.studentId }).sort({ createdAt: -1 }).toArray();
+        res.json({ defaults, saved });
+    } catch (e) {
+        res.status(500).json({ defaults: [], saved: [] });
+    }
+});
+app.delete('/api/chat/quick-replies/:id', requireAuth, requireRole('teacher'), async (req, res) => {
+    try {
+        await db.collection('chatQuickReplies').deleteOne({ _id: new ObjectId(req.params.id), teacherId: req.currentUser.studentId });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================================
+// GLOBAL SEARCH (Phase 6A) — admin-facing: search students/teachers/classes
+// by name or ID, get a compact result card without menu navigation.
+// =======================================================================
+app.get('/api/admin/search', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const q = (req.query.q || '').trim();
+        if (q.length < 2) return res.json({ students: [], teachers: [], classes: [] });
+        const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+        const studentDocs = await db.collection('users').find(
+            { schoolId, role: 'student', $or: [{ name: re }, { studentId: re }] },
+            { projection: PUBLIC_PROJECTION }
+        ).limit(8).toArray();
+
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        const students = [];
+        for (const s of studentDocs) {
+            const records = await db.collection('attendance').find({ studentId: s.studentId, schoolId, date: { $gte: cutoffStr } }).toArray();
+            const present = records.filter(r => r.status === 'Present').length;
+            const attendancePct = records.length ? Math.round((present / records.length) * 100) : null;
+
+            const homeworkDocs = await db.collection('homework').find({ schoolId, classId: s.classId }).sort({ createdAt: -1 }).limit(15).toArray();
+            const statuses = await db.collection('homeworkStatus').find({ studentId: s.studentId, homeworkId: { $in: homeworkDocs.map(h => String(h._id)) } }).toArray();
+            const doneCount = statuses.filter(st => st.done).length;
+
+            const latestExam = await db.collection('examConfigs').find({ schoolId, classId: s.classId }).sort({ createdAt: -1 }).limit(1).toArray();
+            let reportCardStatus = null;
+            if (latestExam.length) {
+                const mark = await db.collection('examMarks').findOne({ schoolId, classId: s.classId, examName: latestExam[0].examName, studentId: s.studentId });
+                reportCardStatus = { examName: latestExam[0].examName, status: latestExam[0].status, released: !!(mark && mark.released) };
+            }
+
+            students.push({
+                studentId: s.studentId, name: s.name, classId: s.classId,
+                attendancePct,
+                homeworkDone: doneCount, homeworkTotal: homeworkDocs.length,
+                feesOutstanding: Math.max((s.totalFees || 0) - (s.feesPaid || 0), 0),
+                reportCardStatus
+            });
+        }
+
+        const teachers = await db.collection('users').find(
+            { schoolId, role: 'teacher', $or: [{ name: re }, { studentId: re }] },
+            { projection: { studentId: 1, name: 1, classId: 1 } }
+        ).limit(8).toArray();
+
+        const classes = await db.collection('classes').find({ schoolId, className: re }).limit(8).toArray();
+
+        res.json({ students, teachers, classes: classes.map(c => c.className) });
+    } catch (e) {
+        console.error('[admin/search]', e);
+        res.status(500).json({ students: [], teachers: [], classes: [] });
+    }
+});
+
 app.get('/api/owner/schools', requireAuth, requireRole('owner'), async (req, res) => {
     try {
         const schools = await db.collection('schools').find({}).sort({ name: 1 }).toArray();
@@ -742,6 +859,43 @@ app.get('/api/parent/children', requireAuth, requireRole('parent'), async (req, 
 // =======================================================================
 // TEACHER/ADMIN: STUDENTS
 // =======================================================================
+// Bulk actions on the Student Directory (Phase 6B) — deliberately scoped
+// to $set-only field updates rather than reusing the full upsert route,
+// so a bulk class change can't accidentally wipe fee/parent fields the
+// bulk form never touched.
+app.post('/api/admin/students/bulk-class-change', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const { studentIds, newClassId } = req.body;
+        if (!Array.isArray(studentIds) || studentIds.length === 0 || !newClassId) {
+            return res.status(400).json({ success: false, message: "Select at least one student and a target class." });
+        }
+        const result = await db.collection('users').updateMany(
+            { studentId: { $in: studentIds }, role: 'student', schoolId: req.currentUser.schoolId },
+            { $set: { classId: newClassId } }
+        );
+        await logAudit(req, 'bulk_class_change', { count: result.modifiedCount, newClassId });
+        res.json({ success: true, updated: result.modifiedCount });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
+app.post('/api/admin/students/bulk-notify-parents', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const { studentIds, message } = req.body;
+        if (!Array.isArray(studentIds) || studentIds.length === 0 || !message || !message.trim()) {
+            return res.status(400).json({ success: false, message: "Select at least one student and enter a message." });
+        }
+        for (const sid of studentIds) {
+            await notifyParentsOfStudent(req.currentUser.schoolId, sid, 'academic', message.trim());
+        }
+        await logAudit(req, 'bulk_notify_parents', { count: studentIds.length });
+        res.json({ success: true, notified: studentIds.length });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
 app.post('/api/teacher/students/upsert', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
     try {
         let { id, password, name, classId, totalFees, feeDueDate, fatherName, motherName, dob } = req.body;
@@ -847,6 +1001,13 @@ app.post('/api/fees/update', requireAuth, requireRole('admin', 'teacher'), async
             { studentId: studentId, schoolId: req.currentUser.schoolId },
             { $inc: { feesPaid: amountPaid } }
         );
+        // Logged separately from the cumulative feesPaid counter so the
+        // Activity Timeline (Phase 6B) has individual payment events to show,
+        // not just a running total.
+        await db.collection('feePayments').insertOne({
+            schoolId: req.currentUser.schoolId, studentId, amountPaid,
+            recordedBy: req.currentUser.studentId, recordedByName: req.currentUser.name, date: new Date()
+        });
         await logAudit(req, 'fees_update', { targetId: studentId, amountPaid });
         notifyParentsOfStudent(req.currentUser.schoolId, studentId, 'fees', `A payment of ₹${amountPaid} was recorded on your child's fee account.`);
         res.json({ success: true });
@@ -1261,6 +1422,80 @@ app.get('/api/student/attendance/:studentId', requireAuth, requireSelfOrRoleOrPa
     }
 });
 
+// Homework + marks + activity timeline for one specific student, powering
+// the redesigned Student Profile (Phase 6A). Same self/parent/teacher/admin
+// access rule as the attendance route above.
+app.get('/api/student/homework/:studentId', requireAuth, requireSelfOrRoleOrParent('studentId', 'teacher'), async (req, res) => {
+    try {
+        const student = await db.collection('users').findOne({ studentId: req.params.studentId, schoolId: req.currentUser.schoolId });
+        if (!student) return res.json([]);
+        const items = await db.collection('homework').find({ classId: student.classId, schoolId: req.currentUser.schoolId }).sort({ createdAt: -1 }).toArray();
+        res.json(await enrichHomeworkForStudent(items, req.params.studentId));
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+app.get('/api/student/marks/:studentId', requireAuth, requireSelfOrRoleOrParent('studentId', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const studentId = req.params.studentId;
+        const student = await db.collection('users').findOne({ studentId, schoolId });
+        if (!student) return res.json([]);
+        const isStaff = ['admin', 'teacher'].includes(req.currentUser.role);
+
+        const configs = await db.collection('examConfigs').find({ schoolId, classId: student.classId }).sort({ createdAt: -1 }).toArray();
+        const rows = [];
+        for (const cfg of configs) {
+            const mark = await db.collection('examMarks').findOne({ schoolId, classId: student.classId, examName: cfg.examName, studentId });
+            if (!mark) continue;
+            if (!isStaff && !mark.released) continue; // self/parent only see released cards
+            rows.push({
+                examName: cfg.examName, status: cfg.status, released: !!mark.released,
+                percentage: mark.percentage || 0, overallMarks: mark.overallMarks || 0, overallTotal: mark.overallTotal || 0, rank: mark.rank || null
+            });
+        }
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// Chronological activity feed (Phase 6B) — attendance, homework
+// submissions, fee payments, report card verifications, all built from
+// data those modules already write, no new schema beyond feePayments.
+app.get('/api/student/timeline/:studentId', requireAuth, requireSelfOrRoleOrParent('studentId', 'teacher'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const studentId = req.params.studentId;
+        const student = await db.collection('users').findOne({ studentId, schoolId });
+        if (!student) return res.json([]);
+
+        const events = [];
+
+        const attendance = await db.collection('attendance').find({ studentId, schoolId }).sort({ date: -1 }).limit(10).toArray();
+        attendance.forEach(a => events.push({ date: new Date(a.date), icon: a.status === 'Present' ? '🟢' : '🔴', text: `Attendance marked ${a.status}` }));
+
+        const homeworkDocs = await db.collection('homework').find({ classId: student.classId, schoolId }).toArray();
+        const hwIds = homeworkDocs.map(h => String(h._id));
+        const hwById = Object.fromEntries(homeworkDocs.map(h => [String(h._id), h]));
+        const statuses = await db.collection('homeworkStatus').find({ studentId, homeworkId: { $in: hwIds }, done: true }).sort({ doneAt: -1 }).limit(10).toArray();
+        statuses.forEach(s => events.push({ date: new Date(s.doneAt), icon: '📚', text: `Homework submitted: "${hwById[s.homeworkId] ? hwById[s.homeworkId].title : 'Unknown'}"` }));
+
+        const payments = await db.collection('feePayments').find({ studentId, schoolId }).sort({ date: -1 }).limit(10).toArray();
+        payments.forEach(p => events.push({ date: new Date(p.date), icon: '💰', text: `Fee payment recorded: ₹${p.amountPaid}` }));
+
+        const verifiedExams = await db.collection('examConfigs').find({ classId: student.classId, schoolId, status: 'verified' }).sort({ verifiedAt: -1 }).limit(5).toArray();
+        verifiedExams.forEach(e => events.push({ date: new Date(e.verifiedAt || e.updatedAt), icon: '✅', text: `Report card verified: ${e.examName}` }));
+
+        events.sort((a, b) => b.date - a.date);
+        res.json(events.slice(0, 25));
+    } catch (e) {
+        console.error('[student/timeline]', e);
+        res.status(500).json([]);
+    }
+});
+
 // =======================================================================
 // STUDENT PROFILE
 // =======================================================================
@@ -1589,6 +1824,23 @@ app.put('/api/feedback/:id/status', requireAuth, requireRole('admin', 'teacher')
 // =======================================================================
 
 // Role-aware address book: who am I allowed to start a new chat with?
+// Small helper for the "Message Parent" contextual action on a Student
+// Profile (Phase 6B) — resolves which parent account to open/start a
+// thread with, since the profile only knows the student's id.
+app.get('/api/chat/parent-for-student/:studentId', requireAuth, requireRole('teacher'), async (req, res) => {
+    try {
+        const student = await db.collection('users').findOne({ studentId: req.params.studentId, role: 'student', schoolId: req.currentUser.schoolId });
+        if (!student || student.classId !== req.currentUser.classId) {
+            return res.status(403).json({ success: false, message: "You don't teach this student's class." });
+        }
+        const parent = await db.collection('users').findOne({ role: 'parent', schoolId: req.currentUser.schoolId, linkedStudentIds: req.params.studentId });
+        if (!parent) return res.status(404).json({ success: false, message: "No parent account is linked to this student yet." });
+        res.json({ success: true, parentId: parent.studentId });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Database error" });
+    }
+});
+
 app.get('/api/chat/contacts', requireAuth, async (req, res) => {
     try {
         const user = req.currentUser;
@@ -1915,6 +2167,39 @@ async function notifyParentsOfClass(schoolId, classId, type, message) {
     }
 }
 
+// Homework templates (Phase 6B): teachers save a title+description as a
+// reusable template and duplicate-with-new-date instead of retyping
+// weekly assignments.
+app.post('/api/homework/templates', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const { title, description } = req.body;
+        if (!title || !title.trim()) return res.status(400).json({ success: false, message: "Title is required." });
+        const doc = { schoolId: req.currentUser.schoolId, teacherId: req.currentUser.studentId, title: title.trim(), description: description || '', createdAt: new Date() };
+        await db.collection('homeworkTemplates').insertOne(doc);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+app.get('/api/homework/templates', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        const templates = await db.collection('homeworkTemplates').find({ schoolId: req.currentUser.schoolId, teacherId: req.currentUser.studentId }).sort({ createdAt: -1 }).toArray();
+        res.json(templates);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+app.delete('/api/homework/templates/:id', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+    try {
+        await db.collection('homeworkTemplates').deleteOne({ _id: new ObjectId(req.params.id), teacherId: req.currentUser.studentId });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
 app.post('/api/homework', requireAuth, requireRole('admin', 'teacher'), upload.single('attachment'), async (req, res) => {
     try {
         const schoolId = req.currentUser.schoolId;
@@ -2190,7 +2475,7 @@ app.post('/api/exams/:classId/:examName/marks', requireAuth, requireRole('admin'
             const totals = computeExamTotals(entry.marks || {}, config.subjects);
             await db.collection('examMarks').updateOne(
                 { schoolId, classId, examName, studentId: entry.studentId },
-                { $set: { marks: entry.marks || {}, ...totals, updatedAt: new Date() } },
+                { $set: { marks: entry.marks || {}, remarks: entry.remarks || '', ...totals, updatedAt: new Date() } },
                 { upsert: true }
             );
         }
@@ -2299,7 +2584,9 @@ app.post('/api/exams/:classId/:examName/release-all', requireAuth, requireRole('
         ).toArray();
         for (const r of released) {
             notifyUser(schoolId, r.studentId, 'exam', `Your "${examName}" report card is now available.`);
-            notifyParentsOfStudent(schoolId, r.studentId, 'exam', `The "${examName}" report card for your child is now available.`);
+            if (await isAutomationRuleEnabled(schoolId, 'reportcard_release_notify')) {
+                notifyParentsOfStudent(schoolId, r.studentId, 'exam', `The "${examName}" report card for your child is now available.`);
+            }
         }
         await logAudit(req, 'exam_release_all', { classId, examName, released: result.modifiedCount, held: excludeStudentIds.length });
         res.json({ success: true, releasedCount: released.length });
@@ -2326,7 +2613,9 @@ app.post('/api/exams/:classId/:examName/release/:studentId', requireAuth, requir
         if (result.matchedCount === 0) return res.status(404).json({ success: false, message: "Student not found in this exam." });
         if (released) {
             notifyUser(schoolId, studentId, 'exam', `Your "${examName}" report card is now available.`);
-            notifyParentsOfStudent(schoolId, studentId, 'exam', `The "${examName}" report card for your child is now available.`);
+            if (await isAutomationRuleEnabled(schoolId, 'reportcard_release_notify')) {
+                notifyParentsOfStudent(schoolId, studentId, 'exam', `The "${examName}" report card for your child is now available.`);
+            }
         }
         await logAudit(req, 'exam_release_toggle', { classId, examName, studentId, released: !!released });
         res.json({ success: true });
@@ -2398,6 +2687,7 @@ async function loadReportCardData(req, res) {
         overallTotal: markRow.overallTotal || 0,
         percentage: markRow.percentage || 0,
         rank: markRow.rank || null,
+        remarks: markRow.remarks || '',
         verified: config.status === 'verified',
         verifiedByName: config.verifiedByName || null,
         released: !!markRow.released
@@ -2497,6 +2787,16 @@ app.get('/api/report-card/:classId/:examName/:studentId/pdf', requireAuth, async
         if (data.rank) {
             doc.fillColor('#B8860B').text(`Class Rank: #${data.rank}`, tableX, y);
             y += 18;
+        }
+
+        // Teacher remarks (Phase 6B comment bank feeds this field)
+        if (data.remarks && data.remarks.trim()) {
+            y += 6;
+            doc.font('Helvetica-Bold').fontSize(11).fillColor('#101A33').text('Teacher Remarks:', tableX, y);
+            y += 15;
+            doc.font('Helvetica').fontSize(10).fillColor('#333')
+                .text(data.remarks.trim(), tableX, y, { width: tableW });
+            y += doc.heightOfString(data.remarks.trim(), { width: tableW }) + 8;
         }
 
         // Verification stamp
@@ -2626,6 +2926,56 @@ app.post('/api/admin/attendance/digest/send/:studentId', requireAuth, requireRol
 });
 
 // =======================================================================
+// STRUCTURED ERROR LOGGING (Phase 7B)
+// A single logError() call replaces scattered console.error(...) calls so
+// failures are consistently shaped and, when DB is up, also written to a
+// capped `errorLogs` collection — a lightweight substitute for a real log
+// drain, browsable the same way the audit log already is.
+// =======================================================================
+async function logError(where, err, extra) {
+    const entry = {
+        where,
+        message: err && err.message ? err.message : String(err),
+        stack: err && err.stack ? err.stack : null,
+        extra: extra || null,
+        date: new Date()
+    };
+    console.error(`[${where}]`, entry.message);
+    try {
+        if (db) await db.collection('errorLogs').insertOne(entry);
+    } catch (e) {
+        // If even the error logger fails (e.g. DB briefly down), don't throw —
+        // console.error above already captured it.
+    }
+}
+
+// Admin/owner can browse recent server errors the same way they browse the
+// audit log — a cheap alternative to a real log-drain service.
+app.get('/api/admin/error-log', requireAuth, requireRole('admin', 'owner'), async (req, res) => {
+    try {
+        const logs = await db.collection('errorLogs').find({}).sort({ date: -1 }).limit(200).toArray();
+        res.json(logs);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// =======================================================================
+// MONITORING (Phase 7B)
+// Unauthenticated, minimal, cheap to ping — meant for an external uptime
+// checker (e.g. the same cron-job.org account already used for reminders)
+// to catch a sleeping/crashed instance before a user does.
+// =======================================================================
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        dbConnected: !!db,
+        uptimeSeconds: Math.round(process.uptime()),
+        time: new Date().toISOString()
+    });
+});
+
+// =======================================================================
 // REAL CRON (Phase 5)
 // Render's free tier sleeps on idle, so an in-process scheduler (setInterval,
 // node-cron, etc.) can't be trusted to fire. These endpoints exist so an
@@ -2669,6 +3019,7 @@ app.post('/api/cron/fee-reminders', requireCronSecret, async (req, res) => {
 
         let sentCount = 0, skippedCount = 0;
         for (const s of overdue) {
+            if (!(await isAutomationRuleEnabled(s.schoolId, 'fees_reminder_schedule'))) { skippedCount++; continue; }
             const sent = await sendFeeReminder(s.schoolId, s);
             if (sent) sentCount++; else skippedCount++;
         }
@@ -2696,6 +3047,202 @@ app.post('/api/cron/attendance-digest', requireCronSecret, async (req, res) => {
     } catch (e) {
         console.error('[cron] attendance-digest failed:', e);
         res.status(500).json({ success: false, message: "Cron sweep failed." });
+    }
+});
+
+// =======================================================================
+// AUTOMATION RULES ENGINE (Phase 7A)
+// Extends the existing /api/cron/* + CRON_SECRET pinger pattern from
+// Phase 5 rather than introducing a second scheduling mechanism. Each
+// rule is a simple on/off toggle per school (defaults to ON so behavior
+// matches what already happens today); a single sweep endpoint checks
+// all of them and respects each rule's own per-student/per-class cooldown,
+// the same pattern sendFeeReminder/sendAttendanceDigest already use.
+// =======================================================================
+const AUTOMATION_RULE_DEFS = [
+    { key: 'attendance_teacher_reminder', label: "Remind teachers if attendance isn't submitted by 10:30" },
+    { key: 'attendance_parent_low', label: "Notify parents when attendance drops below 75%" },
+    { key: 'homework_student_reminder', label: "Remind students 1 day before homework is due" },
+    { key: 'homework_parent_overdue', label: "Notify parents when homework goes repeatedly overdue (3+ days)" },
+    { key: 'fees_reminder_schedule', label: "Automatic fee reminders (7/3/0/overdue days) — controls the existing daily cron sweep" },
+    { key: 'reportcard_release_notify', label: "Notify parents when a report card is released" }
+];
+
+app.get('/api/admin/automation-rules', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const schoolId = req.currentUser.schoolId;
+        const saved = await db.collection('automationRules').find({ schoolId }).toArray();
+        const savedByKey = Object.fromEntries(saved.map(r => [r.ruleKey, r.enabled]));
+        res.json(AUTOMATION_RULE_DEFS.map(d => ({ ...d, enabled: savedByKey[d.key] !== undefined ? savedByKey[d.key] : true })));
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+app.post('/api/admin/automation-rules/toggle', requireAuth, requireRole('admin'), async (req, res) => {
+    try {
+        const { ruleKey, enabled } = req.body;
+        if (!AUTOMATION_RULE_DEFS.some(d => d.key === ruleKey)) return res.status(400).json({ success: false, message: "Unknown rule." });
+        await db.collection('automationRules').updateOne(
+            { schoolId: req.currentUser.schoolId, ruleKey },
+            { $set: { enabled: !!enabled, updatedAt: new Date() } },
+            { upsert: true }
+        );
+        await logAudit(req, 'automation_rule_toggle', { ruleKey, enabled: !!enabled });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+async function isAutomationRuleEnabled(schoolId, ruleKey) {
+    const row = await db.collection('automationRules').findOne({ schoolId, ruleKey });
+    return row ? !!row.enabled : true; // default ON
+}
+
+app.post('/api/cron/automation-sweep', requireCronSecret, async (req, res) => {
+    const summary = { attendanceTeacherReminders: 0, attendanceParentAlerts: 0, homeworkStudentReminders: 0, homeworkParentOverdue: 0 };
+    try {
+        const schools = await db.collection('schools').find({}).toArray();
+        const nowHM = new Date().toTimeString().slice(0, 5);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayDay = todayDayCode();
+
+        for (const school of schools) {
+            const schoolId = school.schoolId;
+
+            // (a) Remind teachers if attendance isn't submitted by 10:30
+            if (nowHM >= '10:30' && await isAutomationRuleEnabled(schoolId, 'attendance_teacher_reminder')) {
+                const slots = await db.collection('timetableSlots').find({ schoolId, day: todayDay }).toArray();
+                const classTeacherPairs = [...new Map(slots.map(s => [`${s.classId}|${s.teacherId}`, s])).values()];
+                for (const pair of classTeacherPairs) {
+                    const marked = await db.collection('attendance').countDocuments({ schoolId, classId: pair.classId, date: todayStr });
+                    if (marked > 0) continue;
+                    const teacher = await db.collection('users').findOne({ studentId: pair.teacherId, role: 'teacher' });
+                    if (!teacher) continue;
+                    const cooldownKey = `lastAttReminderAt_${pair.classId}_${todayStr}`;
+                    if (teacher[cooldownKey]) continue;
+                    await notifyUser(schoolId, pair.teacherId, 'attendance', `Reminder: attendance for ${pair.classId} hasn't been submitted today.`);
+                    await db.collection('users').updateOne({ studentId: pair.teacherId }, { $set: { [cooldownKey]: new Date() } });
+                    summary.attendanceTeacherReminders++;
+                }
+            }
+
+            // (b) Notify parents when attendance drops below 75% (7-day cooldown per student)
+            if (await isAutomationRuleEnabled(schoolId, 'attendance_parent_low')) {
+                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+                const cutoffStr = cutoff.toISOString().slice(0, 10);
+                const students = await db.collection('users').find({ schoolId, role: 'student' }, { projection: { studentId: 1, lastAttendanceAlertAt: 1 } }).toArray();
+                for (const s of students) {
+                    if (s.lastAttendanceAlertAt && (new Date() - new Date(s.lastAttendanceAlertAt)) < 7 * 24 * 3600 * 1000) continue;
+                    const records = await db.collection('attendance').find({ studentId: s.studentId, schoolId, date: { $gte: cutoffStr } }).toArray();
+                    if (records.length < 5) continue; // not enough data yet
+                    const pct = Math.round((records.filter(r => r.status === 'Present').length / records.length) * 100);
+                    if (pct >= 75) continue;
+                    await notifyParentsOfStudent(schoolId, s.studentId, 'attendance', `Attendance alert: your child's attendance is ${pct}%, below the school's 75% recommended level.`);
+                    await db.collection('users').updateOne({ studentId: s.studentId }, { $set: { lastAttendanceAlertAt: new Date() } });
+                    summary.attendanceParentAlerts++;
+                }
+            }
+
+            // (c) Remind students 1 day before homework is due (per-homework, per-student, once)
+            if (await isAutomationRuleEnabled(schoolId, 'homework_student_reminder')) {
+                const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+                const dueHomework = await db.collection('homework').find({ schoolId, dueDate: tomorrowStr }).toArray();
+                for (const hw of dueHomework) {
+                    const students = await db.collection('users').find({ schoolId, role: 'student', classId: hw.classId }).toArray();
+                    for (const st of students) {
+                        const status = await db.collection('homeworkStatus').findOne({ homeworkId: String(hw._id), studentId: st.studentId });
+                        if (status && (status.done || status.reminderSentAt)) continue;
+                        await notifyUser(schoolId, st.studentId, 'homework', `Reminder: "${hw.title}" is due tomorrow.`);
+                        await db.collection('homeworkStatus').updateOne(
+                            { homeworkId: String(hw._id), studentId: st.studentId },
+                            { $set: { reminderSentAt: new Date() }, $setOnInsert: { schoolId, done: false } },
+                            { upsert: true }
+                        );
+                        summary.homeworkStudentReminders++;
+                    }
+                }
+            }
+
+            // (d) Notify parents when homework goes repeatedly overdue (3+ days late, once)
+            if (await isAutomationRuleEnabled(schoolId, 'homework_parent_overdue')) {
+                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 3);
+                const cutoffStr = cutoff.toISOString().slice(0, 10);
+                const overdueHomework = await db.collection('homework').find({ schoolId, dueDate: { $ne: null, $lte: cutoffStr } }).toArray();
+                for (const hw of overdueHomework) {
+                    const students = await db.collection('users').find({ schoolId, role: 'student', classId: hw.classId }).toArray();
+                    for (const st of students) {
+                        const status = await db.collection('homeworkStatus').findOne({ homeworkId: String(hw._id), studentId: st.studentId });
+                        if (status && (status.done || status.overdueNotifiedAt)) continue;
+                        await notifyParentsOfStudent(schoolId, st.studentId, 'homework', `"${hw.title}" is now several days overdue and still not marked done.`);
+                        await db.collection('homeworkStatus').updateOne(
+                            { homeworkId: String(hw._id), studentId: st.studentId },
+                            { $set: { overdueNotifiedAt: new Date() }, $setOnInsert: { schoolId, done: false } },
+                            { upsert: true }
+                        );
+                        summary.homeworkParentOverdue++;
+                    }
+                }
+            }
+        }
+        console.log('[cron] automation-sweep:', JSON.stringify(summary));
+        res.json({ success: true, ...summary });
+    } catch (e) {
+        console.error('[cron] automation-sweep failed:', e);
+        res.status(500).json({ success: false, message: "Automation sweep failed.", ...summary });
+    }
+});
+
+// =======================================================================
+// SCHEDULED BACKUPS (Phase 7B)
+// A true `mongodump` needs the Mongo tools binary, which isn't present on
+// a stock Render Node deployment (no apt access, no custom buildpack) — so
+// this is a logical JSON export via the driver instead: every collection,
+// dumped to one JSON file, uploaded to Cloudinary if configured (same
+// persistence story as file uploads in Phase 5) or written to local disk
+// otherwise. If you're on MongoDB Atlas, Atlas's own automated backups are
+// the more robust option — this exists for anyone self-hosting Mongo, or
+// as a second safety net either way. Same CRON_SECRET pinger pattern.
+// =======================================================================
+const BACKUP_COLLECTIONS = [
+    'users', 'schools', 'classes', 'attendance', 'homework', 'homeworkStatus',
+    'homeworkTemplates', 'examConfigs', 'examMarks', 'chatThreads', 'chatMessages',
+    'chatQuickReplies', 'feedback', 'notifications', 'auditLogs', 'feePayments',
+    'timetableSlots', 'automationRules', 'reportCardComments'
+];
+
+app.post('/api/cron/backup', requireCronSecret, async (req, res) => {
+    try {
+        const dump = { generatedAt: new Date().toISOString(), collections: {} };
+        for (const name of BACKUP_COLLECTIONS) {
+            dump.collections[name] = await db.collection(name).find({}).toArray();
+        }
+        const filename = `adis-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        const buffer = Buffer.from(JSON.stringify(dump), 'utf8');
+
+        let location;
+        if (CLOUDINARY_ENABLED) {
+            location = await new Promise((resolve, reject) => {
+                const stream = cloudinary.uploader.upload_stream({ folder: 'backups', resource_type: 'raw', public_id: filename }, (err, result) => {
+                    if (err) return reject(err);
+                    resolve(result.secure_url);
+                });
+                stream.end(buffer);
+            });
+        } else {
+            fs.mkdirSync('./backups/', { recursive: true });
+            fs.writeFileSync(`./backups/${filename}`, buffer);
+            location = `local:./backups/${filename} (ephemeral — set CLOUDINARY_* env vars so backups survive redeploys)`;
+        }
+
+        const sizeKB = Math.round(buffer.length / 1024);
+        console.log(`[cron] backup: ${filename} (${sizeKB} KB) -> ${location}`);
+        res.json({ success: true, filename, sizeKB, location });
+    } catch (e) {
+        console.error('[cron] backup failed:', e);
+        res.status(500).json({ success: false, message: "Backup failed." });
     }
 });
 
